@@ -200,10 +200,7 @@ def build_pipeline_config(
     )
 
     available_regions = {region.name: copy.deepcopy(region) for region in pipeline_config.regions}
-    if not regions:
-        selected_names = list(available_regions.keys())
-    else:
-        selected_names = list(dict.fromkeys(regions))  # preserve order, remove duplicates
+    selected_names = list(available_regions.keys()) if not regions else list(dict.fromkeys(regions))
 
     selected_definitions: List[RegionDefinition] = []
     for name in selected_names:
@@ -326,26 +323,30 @@ def main() -> None:
         per_region_visualization=args.per_region_vis,
     )
 
-    summary_records: List[Dict[str, Any]] = []
+    # 设置输出目录（多视频模式）
     if multi_video:
-        output_dir = Path(args.output_dir).expanduser().resolve() if args.output_dir else (
-            project_root / "outputs" / "region_analysis_reports"
+        output_dir = (
+            Path(args.output_dir).expanduser().resolve()
+            if args.output_dir
+            else project_root / "outputs" / "region_analysis_reports"
         )
         output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 设置调试统计目录
+        debug_dir = None
         if args.debug_dir:
             debug_dir = Path(args.debug_dir).expanduser().resolve()
         elif args.debug_stats:
             debug_dir = Path(args.debug_stats).expanduser().resolve()
-        else:
-            debug_dir = None
         if debug_dir:
             debug_dir.mkdir(parents=True, exist_ok=True)
     else:
         output_dir = None
         debug_dir = None
+    
+    summary_records: List[Dict[str, Any]] = []
 
     pipeline = RegionAnalysisPipeline(pipeline_config)
-
     progress = tqdm(video_paths, desc="Processing videos", unit="video") if tqdm else video_paths
 
     for video_path in progress:
@@ -361,19 +362,21 @@ def main() -> None:
         write_report(report, output_path)
         write_debug_stats(report, debug_path)
 
-        summary_record = {
-            "video_path": str(video_path),
-            "report_path": str(output_path),
-            "anomaly_count": report.get("anomaly_count", 0),
-            "fps": report.get("fps"),
-            "frame_count": report.get("frame_count"),
-        }
-        if debug_path is not None:
-            summary_record["debug_stats_path"] = str(debug_path)
-        summary_records.append(summary_record)
+        anomaly_count = report.get("anomaly_count", 0)
+        if multi_video:
+            summary_record = {
+                "video_path": str(video_path),
+                "report_path": str(output_path),
+                "anomaly_count": anomaly_count,
+                "fps": report.get("fps"),
+                "frame_count": report.get("frame_count"),
+            }
+            if debug_path is not None:
+                summary_record["debug_stats_path"] = str(debug_path)
+            summary_records.append(summary_record)
 
         if tqdm:
-            progress.set_postfix({"video": video_path.name, "anomalies": summary_record["anomaly_count"]})
+            progress.set_postfix({"video": video_path.name, "anomalies": anomaly_count})
         print(f"[RegionAnalysis] 分析完成，报告已保存到: {output_path}")
 
     if multi_video:

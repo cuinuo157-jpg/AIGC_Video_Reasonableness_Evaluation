@@ -55,16 +55,12 @@ def load_report(report_path: Path, region: str = "motion_region") -> dict:
             f"{report_path} 中区域 '{region}' 没有 frame_stats 数据，请确认分析时是否开启 --debug_stats。"
         )
     
-    # 从 video_info 或顶层获取 fps
-    fps = data.get("fps") or data.get("video_info", {}).get("fps", 0.0)
-    
     return {
         "frame_stats": frame_stats,
         "motion_threshold": metadata.get("motion_threshold", 0.0),
         "similarity_threshold": metadata.get("similarity_threshold", 0.0),
         "hist_diff_threshold": metadata.get("hist_diff_threshold"),
         "baseline_motion": metadata.get("baseline_motion", 0.0),
-        "fps": fps,
         "video_path": data.get("video_path") or data.get("video_info", {}).get("path", ""),
         "region": region,
     }
@@ -167,12 +163,12 @@ def main():
     report_path = Path(args.report).expanduser().resolve()
     payload = load_report(report_path, args.region)
 
-    default_title = (
+    title = args.title or (
         f"{Path(payload['video_path']).name} [{payload['region']}]"
         if payload["video_path"]
         else payload["region"]
     )
-    title = args.title or default_title
+    
     plot_metrics(
         frame_stats=payload["frame_stats"],
         motion_threshold=payload["motion_threshold"],
