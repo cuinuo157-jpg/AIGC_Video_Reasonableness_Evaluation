@@ -16,15 +16,6 @@ class RAFTConfig:
     model_type: str = "large"  # 支持 large 或 small
     use_gpu: bool = True
     batch_size: int = 1
-    # 运动突变检测参数（与RegionTemporalChangeConfig完全一致）
-    motion_discontinuity_threshold: float = 6.0  # 运动变化阈值（绝对差值，像素单位）
-    motion_similarity_threshold: float = 0.25  # 颜色相似度下降阈值
-    motion_hist_diff_threshold: float = 0.012  # 直方图差异阈值
-    motion_consecutive_frames: int = 1  # 需要连续满足条件的帧数
-    motion_baseline_window: int = 5  # baseline窗口大小（前N帧）
-    motion_use_color_similarity: bool = True  # 是否使用颜色相似度检测
-    motion_use_flow_change: bool = True  # 是否使用光流变化检测
-    motion_min_roi_size: int = 12  # 最小ROI区域大小（像素数）
     enable_visualization: bool = False
     visualization_output_dir: Optional[str] = None
     visualization_max_frames: int = 30
