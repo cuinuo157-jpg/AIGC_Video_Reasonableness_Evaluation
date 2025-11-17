@@ -267,7 +267,6 @@ class RegionAnalysisPipeline:
         region_results: Dict[str, Dict[str, object]] = {}
         overall_anomalies: List[Dict[str, object]] = []
         scores: List[float] = []
-        visualization_dirs: Dict[str, str] = {}
 
         for region in self.config.regions:
             masks, coverage = self._build_region_masks(region, frames_uint8, keypoint_sequence)
@@ -289,21 +288,17 @@ class RegionAnalysisPipeline:
                 {**anomaly, "region": region.name} for anomaly in region_anomalies
             )
 
-            if self._vis_dir:
-                region_dir = self._vis_dir / region.name
-                region_metadata["visualization_dir"] = str(region_dir)
-                visualization_dirs[region.name] = str(region_dir)
+            if self._vis_dir and self.config.per_region_visualization:
+                region_metadata["visualization_dir"] = str(self._vis_dir / region.name)
 
         overall_score = float(np.mean(scores)) if scores else 1.0
         metadata: Dict[str, object] = {"regions": list(region_results.keys())}
-        combined_output: Optional[Path] = None
+        
         if self._combined_visualizer is not None:
             combined_output = self._combined_visualizer.save()
+            if combined_output is not None:
+                metadata["combined_visualization_dir"] = str(combined_output)
             self._combined_visualizer = None
-        if combined_output is not None:
-            metadata["combined_visualization_dir"] = str(combined_output)
-        if visualization_dirs:
-            metadata["visualization_dirs"] = visualization_dirs
 
         return {
             "score": overall_score,
@@ -432,20 +427,18 @@ class RegionAnalysisPipeline:
         if not self.config.enable_visualization:
             self._vis_dir = None
             self._vis_counters = {}
-            self._combined_visualizer = None
             return
 
-        if self.config.visualization_output_dir:
-            base_dir = Path(self.config.visualization_output_dir).expanduser()
-        else:
-            base_dir = Path(__file__).resolve().parents[3] / "outputs" / "region_analysis"
+        base_dir = (
+            Path(self.config.visualization_output_dir).expanduser()
+            if self.config.visualization_output_dir
+            else Path(__file__).resolve().parents[3] / "outputs" / "region_analysis"
+        )
         base_dir.mkdir(parents=True, exist_ok=True)
         video_name = Path(video_path).stem if video_path else "video"
-        target_dir = (base_dir / video_name).resolve()
-        target_dir.mkdir(parents=True, exist_ok=True)
-        self._vis_dir = target_dir
+        self._vis_dir = (base_dir / video_name).resolve()
+        self._vis_dir.mkdir(parents=True, exist_ok=True)
         self._vis_counters = {}
-        self._combined_visualizer = None
 
     def _save_mask_visualization(
         self,
@@ -455,7 +448,7 @@ class RegionAnalysisPipeline:
         selected_mask: Optional[np.ndarray],
         frame_idx: int,
     ) -> None:
-        if self._vis_dir is None:
+        if self._vis_dir is None or not self.config.per_region_visualization:
             return
 
         max_frames = self.config.visualization_max_frames or 0
@@ -463,11 +456,8 @@ class RegionAnalysisPipeline:
         if max_frames > 0 and counter >= max_frames:
             return
 
-        if self.config.per_region_visualization:
-            region_dir = self._vis_dir / region.name
-            region_dir.mkdir(parents=True, exist_ok=True)
-        else:
-            region_dir = None
+        region_dir = self._vis_dir / region.name
+        region_dir.mkdir(parents=True, exist_ok=True)
 
         frame_uint8 = self._ensure_uint8(frame)
         frame_rgb = frame_uint8.copy()
@@ -500,9 +490,8 @@ class RegionAnalysisPipeline:
             1,
             cv2.LINE_AA,
         )
-        if region_dir is not None:
-            save_path = region_dir / f"frame_{frame_idx:04d}.png"
-            cv2.imwrite(str(save_path), cv2.cvtColor(blended, cv2.COLOR_RGB2BGR))
-            self._vis_counters[region.name] = counter + 1
+        save_path = region_dir / f"frame_{frame_idx:04d}.png"
+        cv2.imwrite(str(save_path), cv2.cvtColor(blended, cv2.COLOR_RGB2BGR))
+        self._vis_counters[region.name] = counter + 1
 
 
