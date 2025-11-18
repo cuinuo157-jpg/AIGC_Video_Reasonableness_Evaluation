@@ -38,8 +38,12 @@ def load_anomaly_data(result_path: Path) -> Dict:
     if "anomalies" in data:
         for anomaly in data["anomalies"]:
             if isinstance(anomaly, dict):
-                anomaly_type = anomaly.get("type", "").lower()
-                if "structural_region_temporal_change" in anomaly_type or "region_temporal" in anomaly_type:
+                anomaly_type = anomaly.get("type", "")
+                anomaly_type_lower = anomaly_type.lower()
+                # 匹配逻辑：检查是否包含关键词（支持精确匹配和包含匹配）
+                if ("structural_region_temporal_change" in anomaly_type_lower or 
+                    "region_temporal" in anomaly_type_lower or
+                    anomaly_type == "structural_region_temporal_change"):
                     temporal_change_anomalies.append(anomaly)
     
     # 按对象分组时序变化异常（用于详细可视化）

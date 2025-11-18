@@ -37,17 +37,60 @@ def load_temporal_change_anomalies(result_path: Path) -> Dict:
     # 提取时序变化异常（步骤1的结构分析中的区域时序变化异常）
     temporal_change_anomalies = []
     if "anomalies" in data:
-        for anomaly in data["anomalies"]:
+        all_anomalies = data["anomalies"]
+        print(f"[调试] 总异常数量: {len(all_anomalies)}")
+        
+        for anomaly in all_anomalies:
             if isinstance(anomaly, dict):
-                anomaly_type = anomaly.get("type", "").lower()
-                if "structural_region_temporal_change" in anomaly_type or "region_temporal" in anomaly_type:
+                anomaly_type = anomaly.get("type", "")
+                anomaly_type_lower = anomaly_type.lower()
+                
+                # 匹配逻辑：检查是否包含关键词
+                # 注意：structural_region_temporal_change 是完整的类型名称
+                is_temporal_change = (
+                    "structural_region_temporal_change" in anomaly_type_lower or 
+                    "region_temporal" in anomaly_type_lower or
+                    anomaly_type == "structural_region_temporal_change"  # 精确匹配
+                )
+                
+                if is_temporal_change:
                     temporal_change_anomalies.append(anomaly)
+                    print(f"[匹配] 找到时序变化异常: type={anomaly_type}")
+    
+    # 调试信息：打印找到的异常类型
+    if temporal_change_anomalies:
+        print(f"[调试] 找到 {len(temporal_change_anomalies)} 个时序变化异常")
+        # 打印前几个异常的类型和metadata信息
+        for i, anomaly in enumerate(temporal_change_anomalies[:3]):
+            metadata = anomaly.get('metadata', {})
+            print(f"  异常 {i+1}: type={anomaly.get('type')}, "
+                  f"confidence={anomaly.get('confidence', 'N/A')}, "
+                  f"has_metadata={bool(metadata)}, "
+                  f"object_id={metadata.get('object_id') if isinstance(metadata, dict) else None}")
+    else:
+        # 如果没有找到，打印所有异常类型用于调试
+        if "anomalies" in data:
+            all_types = [a.get("type", "unknown") for a in data["anomalies"] if isinstance(a, dict)]
+            unique_types = list(set(all_types))
+            print(f"[调试] 未找到时序变化异常。")
+            print(f"      所有异常类型 ({len(unique_types)} 种): {unique_types}")
+            print(f"      提示：检查异常类型是否包含 'structural_region_temporal_change' 或 'region_temporal'")
+            
+            # 检查是否有类似的类型
+            similar_types = [t for t in unique_types if "temporal" in t.lower() or "region" in t.lower() or "structural" in t.lower()]
+            if similar_types:
+                print(f"      发现相似类型: {similar_types}")
     
     # 按对象分组异常
     anomalies_by_object: Dict[int, Dict[str, Any]] = {}
+    anomalies_without_object_id = []  # 记录没有object_id的异常
+    
     for anomaly in temporal_change_anomalies:
         if isinstance(anomaly, dict):
             metadata = anomaly.get("metadata", {})
+            if not isinstance(metadata, dict):
+                metadata = {}
+            
             object_id = metadata.get("object_id")
             if object_id is not None:
                 if object_id not in anomalies_by_object:
@@ -60,6 +103,14 @@ def load_temporal_change_anomalies(result_path: Path) -> Dict:
                 # 提取baseline（从第一个异常的metadata中）
                 if anomalies_by_object[object_id]["baseline_motion"] is None:
                     anomalies_by_object[object_id]["baseline_motion"] = metadata.get("baseline_motion")
+            else:
+                # 如果没有object_id，记录但不分组（可能是融合后的异常丢失了metadata）
+                anomalies_without_object_id.append(anomaly)
+    
+    # 如果有异常但没有object_id，给出提示
+    if anomalies_without_object_id:
+        print(f"[警告] 有 {len(anomalies_without_object_id)} 个时序变化异常缺少 object_id，无法按对象分组")
+        print(f"      这可能是因为异常融合时丢失了 metadata 字段")
     
     # 提取阈值信息
     temporal_threshold = None
@@ -295,6 +346,17 @@ def main():
     
     if not payload["temporal_change_anomalies"]:
         print("[警告] 没有找到区域时序变化异常，请确认分析结果中包含了步骤1的区域时序变化检测结果。")
+        print("      提示：请确认运行 run_analysis.py 时启用了区域时序变化检测（默认启用）")
+        return
+    
+    # 检查是否有按对象分组的异常
+    if not payload["anomalies_by_object"]:
+        print("[错误] 找到时序变化异常，但无法按对象分组（缺少 object_id）。")
+        print("      这通常是因为异常融合时丢失了 metadata 字段。")
+        print("      解决方案：")
+        print("      1. 使用最新版本的代码（已修复融合时保留 metadata 的问题）")
+        print("      2. 或者检查分析结果中的异常是否包含 metadata.object_id 字段")
+        print(f"      找到的异常数量: {len(payload['temporal_change_anomalies'])}")
         return
     
     default_title = (

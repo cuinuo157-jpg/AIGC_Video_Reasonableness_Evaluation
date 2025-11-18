@@ -56,6 +56,25 @@ def fuse_multimodal_anomalies(
         # 使用第一个异常的时间戳和位置信息
         primary_anomaly = anomaly_group[0]
         
+        # 合并所有异常的metadata（保留重要字段如object_id、class_name等）
+        merged_metadata = {}
+        for anomaly in anomaly_group:
+            if 'metadata' in anomaly and isinstance(anomaly['metadata'], dict):
+                # 优先保留第一个异常的metadata，但合并其他异常的重要字段
+                if not merged_metadata:
+                    merged_metadata = anomaly['metadata'].copy()
+                else:
+                    # 如果当前异常的metadata有object_id而merged_metadata没有，则添加
+                    if 'object_id' in anomaly['metadata'] and 'object_id' not in merged_metadata:
+                        merged_metadata['object_id'] = anomaly['metadata']['object_id']
+                    if 'class_name' in anomaly['metadata'] and 'class_name' not in merged_metadata:
+                        merged_metadata['class_name'] = anomaly['metadata']['class_name']
+                    # 合并其他重要字段（如baseline_motion、motion_value等）
+                    for key in ['baseline_motion', 'motion_value', 'motion_change', 
+                               'hist_similarity', 'hist_diff', 'similarity_drop', 'flow_value', 'triggers']:
+                        if key in anomaly['metadata'] and key not in merged_metadata:
+                            merged_metadata[key] = anomaly['metadata'][key]
+        
         fused_anomaly = {
             'type': anomaly_type,
             'timestamp': primary_anomaly.get('timestamp', ''),
@@ -64,7 +83,8 @@ def fuse_multimodal_anomalies(
             'description': _generate_description(anomaly_group),
             'modalities': list(modality_set),
             'severity': severity,
-            'location': primary_anomaly.get('location', {})
+            'location': primary_anomaly.get('location', {}),
+            'metadata': merged_metadata if merged_metadata else primary_anomaly.get('metadata', {})
         }
         
         fused_anomalies.append(fused_anomaly)
