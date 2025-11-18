@@ -80,17 +80,69 @@ def load_anomaly_data(result_path: Path) -> Dict:
         similarity_threshold = motion_metrics.get("similarity_threshold")
         hist_diff_threshold = motion_metrics.get("hist_diff_threshold")
     
-    # 提取时序变化异常的frame_stats（需要从structure_metrics或其他地方获取）
+    # 提取时序变化异常的frame_stats（从analysis.regions中获取）
     # 注意：步骤1的区域时序变化异常可能没有统一的frame_stats，因为是对每个对象分别检测的
     temporal_frame_stats = []
     temporal_baseline = None
     temporal_threshold = None
     
+    # 尝试从analysis.regions中提取frame_stats（合并所有区域的frame_stats）
+    analysis = data.get("analysis", {})
+    regions = analysis.get("regions", {})
+    if regions:
+        # 收集所有区域的frame_stats
+        all_region_frame_stats = []
+        for region_name, region_data in regions.items():
+            if isinstance(region_data, dict):
+                metadata = region_data.get("metadata", {})
+                region_frame_stats = metadata.get("frame_stats", [])
+                if region_frame_stats:
+                    all_region_frame_stats.extend(region_frame_stats)
+                    # 从第一个区域获取baseline和阈值（如果还没有）
+                    if temporal_baseline is None:
+                        temporal_baseline = metadata.get("baseline_motion")
+                    if temporal_threshold is None:
+                        temporal_threshold = metadata.get("motion_threshold")
+        
+        # 如果有多个区域的frame_stats，按timestamp合并（取平均值）
+        if all_region_frame_stats:
+            try:
+                df = pd.DataFrame(all_region_frame_stats)
+                if 'timestamp' in df.columns and len(df) > 0:
+                    # 按timestamp分组，取平均值
+                    agg_dict = {
+                        'motion_value': 'mean',
+                        'motion_change': 'mean',
+                        'hist_similarity': 'mean',
+                    }
+                    if 'hist_diff' in df.columns:
+                        agg_dict['hist_diff'] = 'mean'
+                    df_grouped = df.groupby('timestamp').agg(agg_dict).reset_index()
+                    temporal_frame_stats = df_grouped.to_dict('records')
+                else:
+                    temporal_frame_stats = all_region_frame_stats
+            except Exception as e:
+                print(f"[警告] 合并区域frame_stats失败: {e}，使用原始数据")
+                temporal_frame_stats = all_region_frame_stats
+    
+    # 如果还是没有找到，尝试从structure_metrics中获取
+    if not temporal_frame_stats and "structure_metrics" in data:
+        structure_metrics = data["structure_metrics"]
+        if isinstance(structure_metrics, dict):
+            temporal_frame_stats = structure_metrics.get("frame_stats", [])
+            if temporal_baseline is None:
+                temporal_baseline = structure_metrics.get("baseline_motion")
+            if temporal_threshold is None:
+                temporal_threshold = structure_metrics.get("motion_threshold")
+    
     # 尝试从thresholds中获取区域时序变化的阈值
     if "thresholds" in data and isinstance(data["thresholds"], dict):
         region_temporal = data["thresholds"].get("region_temporal", {})
         if region_temporal:
-            temporal_threshold = region_temporal.get("motion_threshold")
+            if temporal_threshold is None:
+                temporal_threshold = region_temporal.get("motion_threshold")
+            if temporal_baseline is None:
+                temporal_baseline = region_temporal.get("baseline_motion")
     
     return {
         "fps": fps,
@@ -220,7 +272,9 @@ def plot_anomalies(
     similarity_threshold: Optional[float],
     hist_diff_threshold: Optional[float],
     temporal_threshold: Optional[float],
-    fps: float,
+    temporal_frame_stats: Optional[List[Dict]] = None,
+    temporal_baseline: Optional[float] = None,
+    fps: float = 30.0,
     save_path: Optional[Path] = None,
     show: bool = True,
     title: Optional[str] = None,
@@ -231,11 +285,14 @@ def plot_anomalies(
     Args:
         temporal_change_anomalies: 时序变化异常列表（步骤1）
         motion_anomalies: 运动异常列表（步骤2）
-        motion_frame_stats: 运动分析的frame_stats
+        motion_frame_stats: 运动分析的frame_stats（用于下图）
         motion_baseline: 运动分析的baseline_motion
         motion_threshold: 运动阈值
         similarity_threshold: 相似度阈值
         hist_diff_threshold: 直方图差异阈值
+        temporal_threshold: 时序变化异常阈值
+        temporal_frame_stats: 时序变化异常的frame_stats（用于上图，如果为None则使用motion_frame_stats）
+        temporal_baseline: 时序变化异常的baseline（如果为None则使用motion_baseline）
         fps: 帧率
         save_path: 保存路径
         show: 是否显示
@@ -266,13 +323,14 @@ def plot_anomalies(
                     if temporal_baseline is None:
                         temporal_baseline = metadata.get("baseline_motion")
     
-    # 如果没有从异常中提取到baseline，使用motion_baseline
+    # 如果没有从异常中提取到baseline，使用传入的temporal_baseline或motion_baseline
     if temporal_baseline is None:
         temporal_baseline = motion_baseline
     
-    # 使用motion_frame_stats绘制曲线（因为时序变化异常和运动异常使用相同的检测逻辑）
-    if motion_frame_stats:
-        df = pd.DataFrame(motion_frame_stats)
+    # 使用时序变化异常的frame_stats绘制曲线（优先使用temporal_frame_stats）
+    frame_stats_to_plot = temporal_frame_stats if temporal_frame_stats else motion_frame_stats
+    if frame_stats_to_plot:
+        df = pd.DataFrame(frame_stats_to_plot)
         if "timestamp" in df.columns:
             if "motion_value" in df.columns:
                 ax1.plot(df["timestamp"], df["motion_value"], 
@@ -280,6 +338,10 @@ def plot_anomalies(
             if "motion_change" in df.columns:
                 ax1.plot(df["timestamp"], df["motion_change"], 
                         label="Motion Change", color="tab:orange", linewidth=1.5, alpha=0.7)
+    elif not temporal_timestamps:
+        # 如果没有frame_stats也没有异常点，显示提示信息
+        ax1.text(0.5, 0.5, "No temporal frame_stats available", 
+                transform=ax1.transAxes, ha="center", va="center", fontsize=12)
     
     # 标注baseline
     if temporal_baseline is not None:
@@ -624,6 +686,8 @@ def main():
             similarity_threshold=payload["similarity_threshold"],
             hist_diff_threshold=payload["hist_diff_threshold"],
             temporal_threshold=payload["temporal_threshold"],
+            temporal_frame_stats=payload.get("temporal_frame_stats"),
+            temporal_baseline=payload.get("temporal_baseline"),
             fps=payload["fps"],
             save_path=Path(args.output).expanduser().resolve() if args.output else None,
             show=not args.no_show,
