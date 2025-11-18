@@ -124,11 +124,47 @@ def load_temporal_change_anomalies(result_path: Path) -> Dict:
             similarity_threshold = region_temporal.get("similarity_threshold")
             hist_diff_threshold = region_temporal.get("hist_diff_threshold")
     
+    # 尝试从analysis.regions中提取frame_stats（按对象分组）
+    frame_stats_by_object: Dict[int, List[Dict]] = {}
+    analysis = data.get("analysis", {})
+    regions = analysis.get("regions", {})
+    
+    if regions:
+        # 收集所有区域的frame_stats，按object_id分组
+        for region_name, region_data in regions.items():
+            if isinstance(region_data, dict):
+                metadata = region_data.get("metadata", {})
+                region_frame_stats = metadata.get("frame_stats", [])
+                if region_frame_stats:
+                    # 从frame_stats中提取object_id（如果存在）
+                    for stat in region_frame_stats:
+                        if isinstance(stat, dict):
+                            obj_id = stat.get("object_id")
+                            if obj_id is not None:
+                                if obj_id not in frame_stats_by_object:
+                                    frame_stats_by_object[obj_id] = []
+                                frame_stats_by_object[obj_id].append(stat)
+    
+    # 如果没有从regions中找到，尝试从motion_metrics中获取（但需要按object_id过滤）
+    if not frame_stats_by_object and "motion_metrics" in data:
+        motion_metrics = data.get("motion_metrics", {})
+        motion_frame_stats = motion_metrics.get("frame_stats", [])
+        if motion_frame_stats:
+            # 按object_id分组
+            for stat in motion_frame_stats:
+                if isinstance(stat, dict):
+                    obj_id = stat.get("object_id")
+                    if obj_id is not None:
+                        if obj_id not in frame_stats_by_object:
+                            frame_stats_by_object[obj_id] = []
+                        frame_stats_by_object[obj_id].append(stat)
+    
     return {
         "fps": fps,
         "video_path": data.get("video_path") or data.get("video_info", {}).get("path", ""),
         "temporal_change_anomalies": temporal_change_anomalies,
         "anomalies_by_object": anomalies_by_object,
+        "frame_stats_by_object": frame_stats_by_object,
         "motion_threshold": temporal_threshold,
         "similarity_threshold": similarity_threshold,
         "hist_diff_threshold": hist_diff_threshold,
@@ -141,6 +177,7 @@ def plot_temporal_change_anomalies(
     similarity_threshold: Optional[float],
     hist_diff_threshold: Optional[float],
     fps: float,
+    frame_stats_by_object: Optional[Dict[int, List[Dict]]] = None,
     save_path: Optional[Path] = None,
     show: bool = True,
     title: Optional[str] = None,
@@ -222,14 +259,45 @@ def plot_temporal_change_anomalies(
             ax.set_yticks([])
             continue
         
-        # 绘制motion_value和motion_change散点
-        if motion_values:
-            ax.scatter(timestamps, motion_values, 
-                      color="tab:blue", s=60, alpha=0.7, label="Motion Value", zorder=2)
-        
-        if motion_changes:
-            ax.scatter(timestamps, motion_changes, 
-                      color="tab:orange", s=60, alpha=0.7, label="Motion Change", zorder=2)
+        # 绘制完整的时间序列曲线（如果有frame_stats）
+        obj_frame_stats = frame_stats_by_object.get(obj_id, []) if frame_stats_by_object else []
+        if obj_frame_stats:
+            try:
+                import pandas as pd
+                df = pd.DataFrame(obj_frame_stats)
+                if "timestamp" in df.columns:
+                    # 按timestamp排序
+                    df = df.sort_values("timestamp")
+                    
+                    # 绘制motion_value曲线
+                    if "motion_value" in df.columns:
+                        ax.plot(df["timestamp"], df["motion_value"], 
+                               color="tab:blue", linewidth=1.5, alpha=0.6, 
+                               label="Motion Value", zorder=1)
+                    
+                    # 绘制motion_change曲线
+                    if "motion_change" in df.columns:
+                        ax.plot(df["timestamp"], df["motion_change"], 
+                               color="tab:orange", linewidth=1.5, alpha=0.6, 
+                               label="Motion Change", zorder=1)
+            except Exception as e:
+                print(f"[警告] 绘制对象 {obj_id} 的frame_stats曲线失败: {e}")
+                # 如果绘制曲线失败，回退到只绘制散点
+                if motion_values:
+                    ax.scatter(timestamps, motion_values, 
+                              color="tab:blue", s=60, alpha=0.7, label="Motion Value", zorder=2)
+                if motion_changes:
+                    ax.scatter(timestamps, motion_changes, 
+                              color="tab:orange", s=60, alpha=0.7, label="Motion Change", zorder=2)
+        else:
+            # 如果没有frame_stats，只绘制异常点的散点
+            if motion_values:
+                ax.scatter(timestamps, motion_values, 
+                          color="tab:blue", s=60, alpha=0.7, label="Motion Value", zorder=2)
+            
+            if motion_changes:
+                ax.scatter(timestamps, motion_changes, 
+                          color="tab:orange", s=60, alpha=0.7, label="Motion Change", zorder=2)
         
         # 标注baseline
         if baseline_motion is not None:
@@ -372,6 +440,7 @@ def main():
         similarity_threshold=payload["similarity_threshold"],
         hist_diff_threshold=payload["hist_diff_threshold"],
         fps=payload["fps"],
+        frame_stats_by_object=payload.get("frame_stats_by_object"),
         save_path=Path(args.output).expanduser().resolve() if args.output else None,
         show=not args.no_show,
         title=title,
