@@ -244,6 +244,7 @@ class RegionAnalysisPipeline:
         video_frames: Sequence[np.ndarray],
         fps: float = 30.0,
         video_path: Optional[str] = None,
+        simple_output: bool = False,
     ) -> Dict[str, object]:
         if not self._initialized:
             self.initialize()
@@ -300,12 +301,31 @@ class RegionAnalysisPipeline:
                 metadata["combined_visualization_dir"] = str(combined_output)
             self._combined_visualizer = None
 
-        return {
-            "score": overall_score,
-            "anomalies": overall_anomalies,
-            "regions": region_results,
-            "metadata": metadata,
-        }
+        if simple_output:
+            # 简化输出模式：只包含基本信息
+            region_summary = {}
+            for region_name, region_result in region_results.items():
+                region_anomalies = region_result.get("anomalies", [])
+                region_summary[region_name] = {
+                    "score": float(region_result.get("score", 1.0)),
+                    "has_anomaly": len(region_anomalies) > 0,
+                    "anomaly_count": len(region_anomalies),
+                }
+            
+            return {
+                "score": overall_score,
+                "has_anomaly": len(overall_anomalies) > 0,
+                "total_anomaly_count": len(overall_anomalies),
+                "region_summary": region_summary,
+            }
+        else:
+            # 详细输出模式：包含所有信息
+            return {
+                "score": overall_score,
+                "anomalies": overall_anomalies,
+                "regions": region_results,
+                "metadata": metadata,
+            }
 
     def _build_region_masks(
         self,

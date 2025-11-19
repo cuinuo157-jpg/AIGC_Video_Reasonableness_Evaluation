@@ -48,7 +48,8 @@ class TemporalReasoningRunner:
         self,
         video_path: str,
         text_prompts: Optional[List[str]] = None,
-        output_path: Optional[str] = None
+        output_path: Optional[str] = None,
+        simple_output: bool = False
     ) -> dict:
         """
         运行分析
@@ -79,7 +80,8 @@ class TemporalReasoningRunner:
             video_frames=video_frames,
             text_prompts=text_prompts,
             fps=video_info['fps'],
-            video_path=video_path  # 传入视频路径，用于可视化输出
+            video_path=video_path,  # 传入视频路径，用于可视化输出
+            simple_output=simple_output
         )
         
         # 添加视频信息
@@ -312,6 +314,12 @@ def parse_args():
         help='禁用区域时序变化检测（默认开启，使用SAM2的mask进行光流和颜色相似度检测）'
     )
     
+    parser.add_argument(
+        '--detailed',
+        action='store_true',
+        help='详细输出模式：输出完整分析数据，包含所有详细信息和调试数据（默认：简化模式）'
+    )
+    
     return parser.parse_args()
 
 
@@ -437,23 +445,34 @@ def main():
         result = runner.run(
             video_path=args.video,
             text_prompts=args.prompts,
-            output_path=output_path
+            output_path=output_path,
+            simple_output=not args.detailed  # 默认简化模式，使用--detailed才详细
         )
         
         # 打印摘要
         print("\n" + "=" * 50)
         print("分析摘要")
         print("=" * 50)
-        print(f"运动合理性得分: {result['motion_reasonableness_score']:.3f}")
-        print(f"结构稳定性得分: {result['structure_stability_score']:.3f}")
-        print(f"异常数量: {len(result['anomalies'])}")
         
-        if result['anomalies']:
-            print("\n异常列表:")
-            for i, anomaly in enumerate(result['anomalies'], 1):
-                print(f"  {i}. [{anomaly['severity']}] {anomaly['type']} "
-                      f"({anomaly['timestamp']}, 置信度: {anomaly['confidence']:.2f})")
-                print(f"     描述: {anomaly['description']}")
+        if not args.detailed:
+            # 简化模式输出
+            has_anomaly = result.get('has_anomaly', False)
+            print(f"时序一致性异常: {'是' if has_anomaly else '否'}")
+            print(f"运动合理性得分: {result.get('motion_reasonableness_score', 0.0):.3f}")
+            print(f"结构稳定性得分: {result.get('structure_stability_score', 0.0):.3f}")
+            print(f"总异常数量: {result.get('total_anomaly_count', 0)}")
+        else:
+            # 详细模式输出
+            print(f"运动合理性得分: {result['motion_reasonableness_score']:.3f}")
+            print(f"结构稳定性得分: {result['structure_stability_score']:.3f}")
+            print(f"异常数量: {len(result.get('anomalies', []))}")
+            
+            if result.get('anomalies'):
+                print("\n异常列表:")
+                for i, anomaly in enumerate(result['anomalies'], 1):
+                    print(f"  {i}. [{anomaly['severity']}] {anomaly['type']} "
+                          f"({anomaly['timestamp']}, 置信度: {anomaly['confidence']:.2f})")
+                    print(f"     描述: {anomaly['description']}")
         
         print("=" * 50)
         

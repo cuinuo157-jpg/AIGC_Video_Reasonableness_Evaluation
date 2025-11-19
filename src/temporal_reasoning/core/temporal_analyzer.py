@@ -145,6 +145,7 @@ class TemporalReasoningAnalyzer:
         text_prompts: Optional[Sequence[str]] = None,
         fps: Optional[float] = None,
         video_path: Optional[str] = None,
+        simple_output: bool = False,
     ) -> Dict:
         """
         分析视频时序合理性
@@ -170,6 +171,28 @@ class TemporalReasoningAnalyzer:
         print("开始分析视频时序合理性...")
         print(f"视频帧数：{len(video_frames)}")
         print(f"视频帧率：{fps:.2f} fps")
+        # 自动生成prompt（如果启用且未提供prompt）
+        if self.config.enable_auto_prompt and (not text_prompts or len(text_prompts) == 0):
+            print("\n[自动Prompt] 启用自动prompt生成...")
+            try:
+                from ..utils.auto_prompt import auto_generate_prompts_from_video
+                text_prompts = auto_generate_prompts_from_video(
+                    video_path=video_path or "",
+                    frame_idx=0,
+                    method=self.config.auto_prompt_method,
+                    ram_model_path=self.config.auto_prompt_ram_model_path,
+                    yolo_model_path=self.config.auto_prompt_yolo_model_path,
+                )
+                print(f"[自动Prompt] 生成的prompt: {', '.join(text_prompts)}")
+            except Exception as e:
+                print(f"[自动Prompt] 自动生成失败: {e}，使用通用prompt")
+                if self.config.generic_prompts:
+                    text_prompts = self.config.generic_prompts
+                else:
+                    from ..utils.auto_prompt import AutoPromptGenerator
+                    generator = AutoPromptGenerator(method="generic")
+                    text_prompts = generator._generate_generic()
+        
         if text_prompts:
             print(f"文本提示：{', '.join(text_prompts)}")
         print("=" * 50)
@@ -342,22 +365,47 @@ class TemporalReasoningAnalyzer:
                         print(f"[警告] 合并frame_stats失败: {e}，使用原始数据")
                         motion_metrics["frame_stats"] = region_frame_stats
         
-        result = {
-            "motion_reasonableness_score": float(final_motion_score),
-            "structure_stability_score": float(final_structure_score),
-            "anomalies": fused_anomalies,
-            "sub_scores": sub_scores,
-            "anomaly_counts": anomaly_counts,
-            "structure_metrics": {
-                "coherence_score": float(structure_output.score),
-                "vanish_score": float(structure_output.vanish_score),
-                "emerge_score": float(structure_output.emerge_score),
-                **filtered_structure_metadata,
-            },
-            "motion_metrics": motion_metrics,  # 添加运动分析的metadata
-            "per_frame_anomaly_detection": per_frame_anomaly_detection,
-            "thresholds": thresholds_info,
-        }
+        if simple_output:
+            # 简化输出模式：只包含基本信息
+            result = {
+                "has_anomaly": len(fused_anomalies) > 0,
+                "motion_reasonableness_score": float(final_motion_score),
+                "structure_stability_score": float(final_structure_score),
+                "total_anomaly_count": len(fused_anomalies),
+                "anomaly_summary": {
+                    "motion": anomaly_counts.get("motion", 0),
+                    "structure": anomaly_counts.get("structure", 0),
+                    "fused": anomaly_counts.get("fused", 0),
+                }
+            }
+            if self.keypoint_analyzer is not None:
+                result["anomaly_summary"]["physiological"] = anomaly_counts.get("physiological", 0)
+            
+            # 如果存在异常，添加简单的时间分布信息
+            if fused_anomalies:
+                anomaly_types = {}
+                for anomaly in fused_anomalies:
+                    anomaly_type = anomaly.get('type', 'unknown')
+                    anomaly_types[anomaly_type] = anomaly_types.get(anomaly_type, 0) + 1
+                result["anomaly_types"] = anomaly_types
+        else:
+            # 详细输出模式：包含所有信息
+            result = {
+                "motion_reasonableness_score": float(final_motion_score),
+                "structure_stability_score": float(final_structure_score),
+                "anomalies": fused_anomalies,
+                "sub_scores": sub_scores,
+                "anomaly_counts": anomaly_counts,
+                "structure_metrics": {
+                    "coherence_score": float(structure_output.score),
+                    "vanish_score": float(structure_output.vanish_score),
+                    "emerge_score": float(structure_output.emerge_score),
+                    **filtered_structure_metadata,
+                },
+                "motion_metrics": motion_metrics,  # 添加运动分析的metadata
+                "per_frame_anomaly_detection": per_frame_anomaly_detection,
+                "thresholds": thresholds_info,
+            }
 
         print("\n" + "=" * 50)
         print("分析完成")
