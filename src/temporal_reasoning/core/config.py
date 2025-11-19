@@ -101,12 +101,6 @@ class TemporalReasoningConfig:
     fusion: FusionConfig = field(default_factory=FusionConfig)
     thresholds: ThresholdsConfig = field(default_factory=ThresholdsConfig)
     structure_prompts: Optional[List[str]] = None
-    # 无prompt评测配置
-    enable_auto_prompt: bool = False  # 是否启用自动prompt生成
-    auto_prompt_method: str = "generic"  # 自动prompt方法: "generic", "ram", "yolo"
-    auto_prompt_ram_model_path: Optional[str] = None  # RAM模型路径
-    auto_prompt_yolo_model_path: Optional[str] = None  # YOLO模型路径（如"yolov8n.pt"）
-    generic_prompts: Optional[List[str]] = None  # 通用prompt列表（如果为None则使用默认列表）
     structure_visualization_enable: bool = False
     structure_visualization_output_dir: Optional[str] = None
     structure_visualization_max_frames: int = 50

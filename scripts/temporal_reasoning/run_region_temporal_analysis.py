@@ -165,11 +165,6 @@ def parse_args() -> argparse.Namespace:
         "--debug_dir",
         help="Directory to store per-video debug statistics when processing multiple videos.",
     )
-    parser.add_argument(
-        "--detailed",
-        action="store_true",
-        help="详细输出模式：输出完整分析数据，包含所有详细信息和调试数据（默认：简化模式）",
-    )
     return parser.parse_args()
 
 
@@ -252,32 +247,20 @@ def load_temporal_config(config_path: str | None) -> TemporalReasoningConfig:
 def run_analysis_for_video(
     pipeline: RegionAnalysisPipeline,
     video_path: Path,
-    simple_output: bool = False,
 ) -> Dict[str, Any]:
     video_info = get_video_info(str(video_path))
     fps = float(video_info.get("fps") or 30.0)
     frames = load_video_frames(str(video_path))
-    analysis_result = pipeline.analyze(frames, fps=fps, video_path=str(video_path), simple_output=simple_output)
+    analysis_result = pipeline.analyze(frames, fps=fps, video_path=str(video_path))
 
-    if simple_output:
-        # 简化输出模式
-        report: Dict[str, Any] = {
-            "video_path": str(video_path),
-            "has_anomaly": analysis_result.get("has_anomaly", False),
-            "score": analysis_result.get("score", 1.0),
-            "total_anomaly_count": analysis_result.get("total_anomaly_count", 0),
-            "region_summary": analysis_result.get("region_summary", {}),
-        }
-    else:
-        # 详细输出模式
-        report: Dict[str, Any] = {
-            "video_path": str(video_path),
-            "fps": fps,
-            "frame_count": len(frames),
-            "anomaly_count": len(analysis_result.get("anomalies", [])),
-            "analysis": analysis_result,
-            "video_info": video_info,
-        }
+    report: Dict[str, Any] = {
+        "video_path": str(video_path),
+        "fps": fps,
+        "frame_count": len(frames),
+        "anomaly_count": len(analysis_result.get("anomalies", [])),
+        "analysis": analysis_result,
+        "video_info": video_info,
+    }
     return report
 
 
@@ -367,7 +350,7 @@ def main() -> None:
     progress = tqdm(video_paths, desc="Processing videos", unit="video") if tqdm else video_paths
 
     for video_path in progress:
-        report = run_analysis_for_video(pipeline, video_path, simple_output=args.simple)
+        report = run_analysis_for_video(pipeline, video_path)
 
         if multi_video:
             output_path = (output_dir / f"{video_path.stem}_region_analysis.json").resolve()
@@ -377,21 +360,17 @@ def main() -> None:
             debug_path = Path(args.debug_stats).expanduser().resolve() if args.debug_stats else None
 
         write_report(report, output_path)
-        if not args.simple:  # 只在详细模式下保存调试统计
-            write_debug_stats(report, debug_path)
+        write_debug_stats(report, debug_path)
 
-        anomaly_count = report.get("anomaly_count") or report.get("total_anomaly_count", 0)
+        anomaly_count = report.get("anomaly_count", 0)
         if multi_video:
             summary_record = {
                 "video_path": str(video_path),
                 "report_path": str(output_path),
                 "anomaly_count": anomaly_count,
-                "has_anomaly": report.get("has_anomaly", False) if args.simple else (anomaly_count > 0),
-                "score": report.get("score") or report.get("analysis", {}).get("score", 1.0),
+                "fps": report.get("fps"),
+                "frame_count": report.get("frame_count"),
             }
-            if not args.simple:
-                summary_record["fps"] = report.get("fps")
-                summary_record["frame_count"] = report.get("frame_count")
             if debug_path is not None:
                 summary_record["debug_stats_path"] = str(debug_path)
             summary_records.append(summary_record)
