@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
+import cv2
 import numpy as np
 
 from src.temporal_reasoning.motion_flow.flow_analyzer import MotionFlowAnalyzer
@@ -85,6 +86,20 @@ class RegionTemporalChangeDetector:
                 stats.append({"hist_similarity": 1.0, "valid": False})
                 continue
 
+            # 确保mask和frame的尺寸匹配
+            if frame.shape[:2] != mask.shape[:2]:
+                import cv2
+                mask_resized = cv2.resize(
+                    mask.astype(np.float32),
+                    (frame.shape[1], frame.shape[0]),
+                    interpolation=cv2.INTER_NEAREST
+                )
+                if mask.dtype == bool:
+                    mask_resized = mask_resized > 0.5
+                else:
+                    mask_resized = mask_resized.astype(mask.dtype)
+                mask = mask_resized
+
             if mask.dtype == bool:
                 roi_pixels = frame[mask]
             else:
@@ -134,6 +149,21 @@ class RegionTemporalChangeDetector:
 
             u, v = flow
             magnitude = np.sqrt(u ** 2 + v ** 2)
+            
+            # 确保magnitude和mask的尺寸匹配
+            if magnitude.shape[:2] != prev_mask.shape[:2]:
+                # 调整mask尺寸以匹配magnitude
+                mask_resized = cv2.resize(
+                    prev_mask.astype(np.float32),
+                    (magnitude.shape[1], magnitude.shape[0]),
+                    interpolation=cv2.INTER_NEAREST
+                )
+                if prev_mask.dtype == bool:
+                    mask_resized = mask_resized > 0.5
+                else:
+                    mask_resized = mask_resized.astype(prev_mask.dtype)
+                prev_mask = mask_resized
+            
             if prev_mask.dtype == bool:
                 roi_values = magnitude[prev_mask]
             else:
