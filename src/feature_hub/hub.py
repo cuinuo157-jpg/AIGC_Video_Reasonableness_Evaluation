@@ -39,3 +39,16 @@ class FeatureHub:
 
     def clear_cache(self) -> None:
         self._cache.clear()
+
+
+def create_default_hub(video_path: str, device: str = "cuda") -> FeatureHub:
+    """创建预注册所有默认特征提取器的 FeatureHub 实例。"""
+    from .extractors.optical_flow import extract_optical_flow
+    from .extractors.face_embedding import extract_face_embeddings
+    from .extractors.depth import extract_depth_maps
+
+    hub = FeatureHub(video_path, device)
+    hub.register_extractor("optical_flow", extract_optical_flow)
+    hub.register_extractor("face_embedding", extract_face_embeddings)
+    hub.register_extractor("depth", extract_depth_maps)
+    return hub
