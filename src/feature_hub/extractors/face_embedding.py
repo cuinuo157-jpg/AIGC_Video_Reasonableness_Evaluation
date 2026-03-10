@@ -25,9 +25,11 @@ def _get_face_analyzer(device: str) -> Any:
     if _face_analyzer is None:
         from insightface.app import FaceAnalysis
 
+        _insightface_root = str(Path(__file__).resolve().parent.parent.parent.parent / "third_party" / "insightface")
         ctx_id = 0 if "cuda" in device else -1
         _face_analyzer = FaceAnalysis(
             name="buffalo_l",
+            root=_insightface_root,
             providers=(
                 ["CUDAExecutionProvider"] if ctx_id >= 0 else ["CPUExecutionProvider"]
             ),

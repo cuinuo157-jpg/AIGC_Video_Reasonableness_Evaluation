@@ -9,6 +9,7 @@ __pycache__/
 
 # 虚拟环境
 venv/
+.venv/
 env/
 ENV/
 
@@ -29,6 +30,7 @@ ENV/
 *.h5
 *.hdf5
 *.bin
+*.onnx
 
 # 测试和临时文件
 test*.mp4
@@ -46,3 +48,11 @@ vis_results/
 *功能对比*.md
 *分析.md
 *对比*.md
+
+# Pytest
+.pytest_cache/
+
+# 构建产物
+dist/
+build/
+*.egg-info/

@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(conda run -n VMBench pip install -e \"d:/workspace/projects/activate/AIGC_Video_Reasonableness_Evaluation\")",
+      "Bash(conda run -n VMBench pytest \"d:/workspace/projects/activate/AIGC_Video_Reasonableness_Evaluation/tests/test_smoke.py\" -v)",
+      "Bash(ls -la src/temporal_reasoning/*/)",
+      "Bash(wc -l src/**/*.py)",
+      "WebSearch",
+      "WebFetch(domain:arxiv.org)",
+      "Bash(python -m pytest tests/test_feature_hub_cache.py -v --tb=short)",
+      "Bash(conda run -n VMBench python -m pytest tests/test_feature_hub_cache.py -v --tb=short)",
+      "Bash(conda run -n VMBench python -m pytest tests/test_feature_hub.py -v --tb=short)",
+      "Bash(conda run -n VMBench python -m pytest tests/test_extractors_optical_flow.py -v --tb=short)",
+      "Bash(conda run -n VMBench python -m pytest tests/test_extractors_face.py -v --tb=short)",
+      "Bash(conda run -n VMBench python -m pytest tests/test_extractors_depth.py -v --tb=short)",
+      "Bash(conda run -n VMBench pytest tests/test_biological_anomaly.py tests/test_bio_analyzer.py -v --tb=short)",
+      "Bash(conda run -n VMBench pytest tests/test_csim_scorer.py tests/test_face_tracker.py tests/test_face_identity_analyzer.py -v --tb=short)",
+      "Bash(conda run -n VMBench pytest tests/test_au_extractor.py tests/test_expression_analyzer.py -v --tb=short)",
+      "Bash(conda run -n VMBench pytest tests/test_motion_logic_analyzer.py tests/test_physics_consistency.py tests/test_background_consistency.py -v --tb=short)",
+      "Bash(conda run -n VMBench pytest tests/test_evaluation_pipeline.py -v --tb=short)",
+      "Bash(conda run -n VMBench pytest tests/ -v --tb=short)",
+      "Bash(conda run -n VMBench python -c \":*)",
+      "Bash(conda run -n VMBench python -c \"import insightface; print\\(''insightface:'', insightface.__version__\\)\")",
+      "Bash(conda run -n VMBench python -c \"import feat; print\\(''py-feat:'', feat.__version__\\)\")",
+      "Bash(conda run -n VMBench python -c \"import timm; print\\(''timm:'', timm.__version__\\)\")",
+      "Bash(conda run -n VMBench python -c \"import openai; print\\(''openai:'', openai.__version__\\)\")",
+      "Bash(conda run -n VMBench python -c \"import anthropic; print\\(''anthropic:'', anthropic.__version__\\)\")",
+      "Bash(conda run -n VMBench python -c \"import insightface; print\\(insightface.__version__\\)\")",
+      "Bash(conda run -n VMBench python -c \"from scripts.debug_face_identity import load_frames, run_csim_analysis; print\\(''import OK''\\)\")",
+      "Bash(conda run:*)",
+      "Bash(mkdir -p \"D:/workspace/projects/activate/AIGC_Video_Reasonableness_Evaluation/third_party/insightface/models/buffalo_l\")",
+      "Bash(cp \"C:/Users/19554/.insightface/models/buffalo_l/\"*.onnx \"D:/workspace/projects/activate/AIGC_Video_Reasonableness_Evaluation/third_party/insightface/models/buffalo_l/\")"
+    ]
+  }
+}
