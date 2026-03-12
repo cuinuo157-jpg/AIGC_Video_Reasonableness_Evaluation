@@ -30,7 +30,20 @@
       "Bash(conda run -n VMBench python -c \"from scripts.debug_face_identity import load_frames, run_csim_analysis; print\\(''import OK''\\)\")",
       "Bash(conda run:*)",
       "Bash(mkdir -p \"D:/workspace/projects/activate/AIGC_Video_Reasonableness_Evaluation/third_party/insightface/models/buffalo_l\")",
-      "Bash(cp \"C:/Users/19554/.insightface/models/buffalo_l/\"*.onnx \"D:/workspace/projects/activate/AIGC_Video_Reasonableness_Evaluation/third_party/insightface/models/buffalo_l/\")"
+      "Bash(cp \"C:/Users/19554/.insightface/models/buffalo_l/\"*.onnx \"D:/workspace/projects/activate/AIGC_Video_Reasonableness_Evaluation/third_party/insightface/models/buffalo_l/\")",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(python -c \"from feat.utils.io import get_resource_path; print\\(get_resource_path\\(\\)\\)\")",
+      "Bash(ls -la \"d:\\\\workspace\\\\projects\\\\activate\\\\AIGC_Video_Reasonableness_Evaluation\\\\third_party\\\\pyfeat\"\" 2>/dev/null || echo \"目录不存在或为空 \")",
+      "Bash(ls -la /d/workspace/projects/activate/AIGC_Video_Reasonableness_Evaluation/*.md)",
+      "Bash(python -m pytest tests/test_biological_anomaly.py tests/test_bio_analyzer.py tests/test_biological_anomaly_l2.py tests/test_biological_anomaly_l3.py -v --tb=short)",
+      "Bash(pip install:*)",
+      "Bash(find d:workspaceprojectsactivateAIGC_Video_Reasonableness_Evaluation参考代码VMBench -type f -name *.json -o -name *.md -o -name *.txt -o -name *README*)",
+      "Bash(D:/ProgramData/Anaconda3/envs/AIGC/python.exe scripts/debug_bio_anomaly.py --input \"D:\\\\workspace\\\\projects\\\\activate\\\\AIGC_Video_Reasonableness_Evaluation\\\\data\\\\videos\\\\6706926-hd_1920_1080_25fps.mp4\" --device cpu --sample-rate 5 --save-vis --no-mllm)",
+      "Bash(where python:*)",
+      "Bash(D:/ProgramData/Anaconda3/python.exe -m pytest tests/test_biological_anomaly.py tests/test_bio_analyzer.py -v --tb=short)",
+      "Bash(pip --version)"
     ]
   }
 }

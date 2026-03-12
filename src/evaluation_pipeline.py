@@ -11,15 +11,17 @@ from src.biological_anomaly.analyzer import BiologicalAnomalyAnalyzer
 from src.motion_logic.analyzer import MotionLogicAnalyzer
 from src.physics_consistency.analyzer import PhysicsConsistencyAnalyzer
 from src.background_consistency.analyzer import BackgroundConsistencyAnalyzer
+from src.perceptual_quality.analyzer import PerceptualQualityAnalyzer
 from src.feature_hub.hub import create_default_hub, FeatureHub
 
 DEFAULT_WEIGHTS = {
-    "face_identity": 0.20,
-    "expression": 0.15,
-    "biological_anomaly": 0.10,
-    "motion_logic": 0.25,
-    "physics": 0.15,
-    "background": 0.15,
+    "face_identity": 0.13,
+    "expression": 0.13,
+    "biological_anomaly": 0.17,
+    "motion_logic": 0.13,
+    "physics": 0.13,
+    "background": 0.17,
+    "perceptual_quality": 0.14,
 }
 
 
@@ -62,11 +64,12 @@ _SCORE_ATTR_MAP = {
     "motion_logic": "motion_logic_score",
     "physics": "physics_score",
     "background": "background_score",
+    "perceptual_quality": "perceptual_quality_score",
 }
 
 
 class EvaluationPipeline:
-    """六维度统一评测流水线。"""
+    """七维度统一评测流水线。"""
 
     def __init__(
         self,
@@ -80,17 +83,18 @@ class EvaluationPipeline:
         self._analyzers: dict[str, Any] = {
             "face_identity": FaceIdentityAnalyzer(),
             "expression": ExpressionAnalyzer(),
-            "biological_anomaly": BiologicalAnomalyAnalyzer(),
+            "biological_anomaly": BiologicalAnomalyAnalyzer(mllm_client=mllm_client),
             "motion_logic": MotionLogicAnalyzer(mllm_client=mllm_client),
             "physics": PhysicsConsistencyAnalyzer(mllm_client=mllm_client),
             "background": BackgroundConsistencyAnalyzer(),
+            "perceptual_quality": PerceptualQualityAnalyzer(),
         }
 
     def _create_hub(self, video_path: str) -> FeatureHub:
         return create_default_hub(video_path, self.device)
 
     def evaluate(self, video_path: str) -> EvaluationReport:
-        """对视频执行六维度评测，返回结构化报告。"""
+        """对视频执行七维度评测，返回结构化报告。"""
         hub = self._create_hub(video_path)
         results: dict[str, DimensionResult] = {}
 

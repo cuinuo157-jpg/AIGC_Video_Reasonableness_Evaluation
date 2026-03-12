@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 
 from .config import MotionLogicConfig
-from .dynamics_scorer import compute_dynamics_score
+from .dynamics_scorer import compute_dynamics_score, DynamicsDetail
 from .smoothness_scorer import compute_flow_acceleration_smoothness
 
 
@@ -15,6 +15,7 @@ class MotionLogicResult:
     applicable: bool
     skip_reason: str | None = None
     dynamics_score: float = 0.0
+    dynamics_detail: DynamicsDetail | None = None
     smoothness_score: float = 0.0
     naturalness_score: float | None = None
     naturalness_issues: list[str] = field(default_factory=list)
@@ -37,7 +38,24 @@ class MotionLogicAnalyzer:
                 applicable=False, skip_reason="no motion detected"
             )
 
-        dynamics = compute_dynamics_score(flows)
+        # 优先使用相机补偿后的残差光流
+        camera_magnitude = 0.0
+        try:
+            cam_result = hub.get("camera_compensation")
+            if cam_result and cam_result.residual_flows:
+                residual_flows = []
+                for rf in cam_result.residual_flows:
+                    if rf.ndim == 3 and rf.shape[-1] == 2:
+                        residual_flows.append((rf[..., 0], rf[..., 1]))
+                    else:
+                        residual_flows.append((rf[0], rf[1]) if rf.ndim == 3 else (rf, rf))
+                if residual_flows:
+                    flows = residual_flows
+                camera_magnitude = cam_result.camera_magnitude
+        except (KeyError, Exception):
+            pass  # camera_compensation 不可用，使用原始光流
+
+        dynamics, detail = compute_dynamics_score(flows, camera_magnitude)
         smoothness = compute_flow_acceleration_smoothness(flows)
 
         naturalness = None
@@ -69,6 +87,7 @@ class MotionLogicAnalyzer:
         return MotionLogicResult(
             applicable=True,
             dynamics_score=dynamics,
+            dynamics_detail=detail,
             smoothness_score=smoothness,
             naturalness_score=naturalness,
             naturalness_issues=issues,

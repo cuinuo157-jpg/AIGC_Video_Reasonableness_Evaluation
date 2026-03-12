@@ -1,3 +1,8 @@
-from .analyzer import BiologicalAnomalyAnalyzer
+from .analyzer import BiologicalAnomalyAnalyzer, BiologicalAnomalyResult
+from .config import BiologicalAnomalyConfig
 
-__all__ = ["BiologicalAnomalyAnalyzer"]
+__all__ = [
+    "BiologicalAnomalyAnalyzer",
+    "BiologicalAnomalyResult",
+    "BiologicalAnomalyConfig",
+]

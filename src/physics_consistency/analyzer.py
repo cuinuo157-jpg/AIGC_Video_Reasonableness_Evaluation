@@ -47,13 +47,17 @@ class PhysicsConsistencyAnalyzer:
         )
 
         gravity_violations, gravity_score = [], 1.0
-        try:
-            tracking_data = hub.get("tracking")
-            if tracking_data:
-                gravity_violations = check_gravity_consistency(tracking_data)
-                gravity_score = 1.0 if not gravity_violations else 0.3
-        except KeyError:
-            pass
+        if self.config.gravity_weight > 0:
+            try:
+                tracking_data = hub.get("tracking")
+                if tracking_data:
+                    gravity_violations = check_gravity_consistency(tracking_data)
+                    gravity_score = 1.0 if not gravity_violations else 0.3
+            except (KeyError, Exception) as e:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "重力检测跳过: tracking extractor 不可用 (%s)", e
+                )
 
         mllm_issues, mllm_score = [], 1.0
         if self.config.enable_mllm and self._mllm_client:

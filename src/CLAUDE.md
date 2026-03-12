@@ -2,7 +2,7 @@
 
 ## 代码隔离原则
 
-- 每个评测维度独立为一个子包（如 `temporal_reasoning/`, `perceptual_quality/`）
+- 每个评测维度独立为一个子包（如 `biological_anomaly/`, `perceptual_quality/`）
 - 子包之间不应直接互相导入，公共工具放在 `src/` 根级别
 - 每个子包须包含 `__init__.py` 并导出核心接口
 
@@ -13,7 +13,7 @@
 from .utils import compute_flow
 
 # 正确：使用绝对导入（跨包）
-from src.temporal_reasoning import TemporalAnalyzer
+from src.motion_logic.analyzer import MotionLogicAnalyzer
 
 # 避免：通配符导入
 from .utils import *  # 禁止

@@ -34,14 +34,22 @@ class ExpressionAnalyzer:
                 applicable=False, skip_reason="no face detected"
             )
 
-        try:
-            frames = hub.get("video_frames")
-        except KeyError:
-            return ExpressionResult(
-                applicable=False, skip_reason="video_frames not available"
-            )
+        # 优先使用 hub 缓存的 AU 特征，降级到本地 extractor
+        au_per_frame = None
+        if hub.has_extractor("au_features"):
+            try:
+                au_per_frame = hub.get("au_features")
+            except Exception:
+                pass
 
-        au_per_frame = self._extractor.extract_sequence(frames)
+        if not au_per_frame:
+            try:
+                frames = hub.get("video_frames")
+            except KeyError:
+                return ExpressionResult(
+                    applicable=False, skip_reason="video_frames not available"
+                )
+            au_per_frame = self._extractor.extract_sequence(frames)
         if not any(au_per_frame):
             return ExpressionResult(
                 applicable=False, skip_reason="no AU detected"

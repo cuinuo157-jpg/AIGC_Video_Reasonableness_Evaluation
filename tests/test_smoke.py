@@ -19,6 +19,6 @@ def test_src_init_importable():
 
 
 def test_scripts_unified_pipeline_exists():
-    """验证统一流水线脚本存在。"""
+    """验证评测流水线模块存在。"""
     root = pathlib.Path(__file__).parent.parent
-    assert (root / "scripts" / "unified_pipeline.py").is_file()
+    assert (root / "src" / "evaluation_pipeline.py").is_file()

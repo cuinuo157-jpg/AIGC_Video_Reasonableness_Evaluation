@@ -40,7 +40,15 @@ class MLLMClient:
         raise ValueError(f"Unknown provider: {self.config.api_provider}")
 
     def _call_local(self, frames: list[np.ndarray], prompt: str) -> dict:
+        if self.config.local_model == "Qwen-VL":
+            return self._call_qwen_vl_local(frames, prompt)
         raise NotImplementedError("Local MLLM not yet integrated")
+
+    def _call_qwen_vl_local(self, frames: list[np.ndarray], prompt: str) -> dict:
+        """Qwen-VL 本地模型推理接口（预留，尚未部署）。"""
+        raise NotImplementedError(
+            "Qwen-VL 本地模型尚未部署。请使用 backend='api' 或 backend='hybrid' 回退到 API。"
+        )
 
     def _encode_frames(self, frames: list[np.ndarray]) -> list[str]:
         step = max(1, len(frames) // self.config.max_frames)

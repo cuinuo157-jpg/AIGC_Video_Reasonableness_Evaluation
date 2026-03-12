@@ -7,3 +7,8 @@ def test_create_default_hub_has_extractors():
     assert "optical_flow" in features
     assert "face_embedding" in features
     assert "depth" in features
+    assert "keypoints" in features
+    assert "video_frames" in features
+    assert "camera_compensation" in features
+    assert "tracking" in features
+    assert "au_features" in features
