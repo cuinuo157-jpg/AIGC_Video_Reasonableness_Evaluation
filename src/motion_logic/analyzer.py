@@ -32,7 +32,11 @@ class MotionLogicAnalyzer:
         self._mllm_client = mllm_client
 
     def analyze(self, hub: Any) -> MotionLogicResult:
-        flows = hub.get("optical_flow")
+        # 优先使用 RAFT 光流 (亚像素精度)，不可用时降级为 Farneback
+        if hub.has_extractor("raft_flow"):
+            flows = hub.get("raft_flow")
+        else:
+            flows = hub.get("optical_flow")
         if not flows or len(flows) < 2:
             return MotionLogicResult(
                 applicable=False, skip_reason="no motion detected"

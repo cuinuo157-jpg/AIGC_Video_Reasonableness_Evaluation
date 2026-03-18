@@ -76,11 +76,8 @@ def create_default_hub(video_path: str, device: str = "cuda") -> FeatureHub:
     hub.register_extractor("tracking", extract_keypoint_trajectories)
     hub.register_extractor("au_features", extract_au_features)
 
-    # RAFT 光流: 可选注册 (依赖 aux_motion_intensity)
-    try:
-        from .extractors.raft_flow import extract_raft_flow
-        hub.register_extractor("raft_flow", extract_raft_flow)
-    except ImportError:
-        pass
+    # RAFT 光流: RAFT 不可用时内部自动降级为 Farneback
+    from .extractors.raft_flow import extract_raft_flow
+    hub.register_extractor("raft_flow", extract_raft_flow)
 
     return hub

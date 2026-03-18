@@ -43,7 +43,8 @@
       "Bash(D:/ProgramData/Anaconda3/envs/AIGC/python.exe scripts/debug_bio_anomaly.py --input \"D:\\\\workspace\\\\projects\\\\activate\\\\AIGC_Video_Reasonableness_Evaluation\\\\data\\\\videos\\\\6706926-hd_1920_1080_25fps.mp4\" --device cpu --sample-rate 5 --save-vis --no-mllm)",
       "Bash(where python:*)",
       "Bash(D:/ProgramData/Anaconda3/python.exe -m pytest tests/test_biological_anomaly.py tests/test_bio_analyzer.py -v --tb=short)",
-      "Bash(pip --version)"
+      "Bash(pip --version)",
+      "Bash(find /d/workspace/projects/activate/AIGC_Video_Reasonableness_Evaluation -type f -name *motion*)"
     ]
   }
 }
