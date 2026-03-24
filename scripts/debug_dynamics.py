@@ -5,12 +5,14 @@
     python scripts/debug_dynamics.py --input <视频路径>
     python scripts/debug_dynamics.py --input <视频路径> --device cpu
     python scripts/debug_dynamics.py --input <视频路径> --method farneback
+    python scripts/debug_dynamics.py --input <视频路径> --subject   # 启用主体分割
     python scripts/debug_dynamics.py --input data/videos/ --device cuda   # 批量
 
 参数:
     --input        视频文件或目录路径
     --device       推理设备 (cuda / cpu)，默认 cuda
     --method       光流方法 (raft / farneback)，默认 raft
+    --subject      启用主体分割 (SAM2/Grounding DINO)
     --save-vis     保存光流可视化到 outputs/dynamics/
     --max-frames   最大帧数（超出则均匀采样），默认 60
     --max-side     长边最大像素（RAFT 推荐 ≤ 512），默认 512
@@ -18,6 +20,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
@@ -29,6 +32,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from src.motion_logic.dynamics_scorer import compute_dynamics_score, DynamicsDetail
+from src.motion_logic.subject_motion_scorer import (
+    compute_subject_motion_score,
+    SubjectMotionDetail,
+)
 
 
 # ── 光流提取 ─────────────────────────────────────────────────
@@ -96,6 +103,65 @@ def load_video_rgb(
     return frames
 
 
+# ── 主体分割 ─────────────────────────────────────────────────
+
+def extract_subject_masks_standalone(
+    frames_rgb: list[np.ndarray], device: str, offline: bool = False
+) -> tuple[list[np.ndarray], list[float], str]:
+    """独立的主体分割，不依赖 FeatureHub。"""
+    from src.feature_hub.extractors.subject_segmentation import (
+        _try_load_sam2,
+        _try_load_grounding_dino,
+        _detect_boxes_grounding_dino,
+        _segment_with_sam2_boxes,
+        _segment_with_sam2_auto,
+        _interpolate_masks,
+        _SEGMENT_INTERVAL,
+    )
+
+    n = len(frames_rgb)
+    masks: list[np.ndarray] = [np.zeros(frames_rgb[0].shape[:2], dtype=bool)] * n
+    method = "none"
+
+    sam2_predictor = _try_load_sam2(device)
+    gdino = (
+        _try_load_grounding_dino(device, offline=offline)
+        if sam2_predictor is not None else None
+    )
+
+    if sam2_predictor is not None:
+        sample_indices = list(range(0, n, _SEGMENT_INTERVAL))
+        if (n - 1) not in sample_indices:
+            sample_indices.append(n - 1)
+
+        for idx in sample_indices:
+            frame = frames_rgb[idx]
+            mask = None
+
+            if gdino is not None:
+                processor, model = gdino
+                boxes = _detect_boxes_grounding_dino(frame, processor, model, device)
+                if boxes is not None and len(boxes) > 0:
+                    mask = _segment_with_sam2_boxes(frame, sam2_predictor, boxes)
+                    if method == "none":
+                        method = "sam2_grounding"
+
+            if mask is None or not mask.any():
+                mask = _segment_with_sam2_auto(frame, sam2_predictor)
+                if mask.any() and method == "none":
+                    method = "sam2_auto"
+
+            if mask is not None:
+                masks[idx] = mask
+
+        _interpolate_masks(masks, sample_indices)
+    else:
+        print("  [INFO] SAM2 不可用，主体分割跳过")
+
+    ratios = [float(np.sum(m)) / (m.shape[0] * m.shape[1]) for m in masks]
+    return masks, ratios, method
+
+
 # ── 光流可视化 ────────────────────────────────────────────────
 
 def flow_to_color(flow_x: np.ndarray, flow_y: np.ndarray) -> np.ndarray:
@@ -114,6 +180,7 @@ def save_visualizations(
     detail: DynamicsDetail,
     video_name: str,
     out_dir: Path,
+    masks: list[np.ndarray] | None = None,
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     # 保存前 5 帧和最后 1 帧的光流可视化
@@ -124,6 +191,27 @@ def save_visualizations(
         vis = flow_to_color(flows[i][0], flows[i][1])
         fname = out_dir / f"{video_name}_flow_{i:04d}.png"
         cv2.imwrite(str(fname), vis)
+
+        # 主体 mask 叠加 + mask 内光流
+        if masks is not None and i < len(masks) and masks[i].any():
+            mask = masks[i]
+            if mask.shape != vis.shape[:2]:
+                mask = cv2.resize(
+                    mask.astype(np.uint8), (vis.shape[1], vis.shape[0]),
+                    interpolation=cv2.INTER_NEAREST,
+                ).astype(bool)
+
+            # mask 叠加图: 主体区域半透明绿色
+            overlay = vis.copy()
+            overlay[mask] = (overlay[mask] * 0.5 + np.array([0, 128, 0]) * 0.5).astype(np.uint8)
+            cv2.imwrite(str(out_dir / f"{video_name}_subject_{i:04d}.png"), overlay)
+
+            # mask 内光流彩色图
+            masked_flow = flow_to_color(
+                flows[i][0] * mask.astype(float),
+                flows[i][1] * mask.astype(float),
+            )
+            cv2.imwrite(str(out_dir / f"{video_name}_subject_flow_{i:04d}.png"), masked_flow)
 
     # 保存平均光流幅度热力图
     mean_mag = np.mean(
@@ -143,6 +231,8 @@ def analyze_video(
     device: str,
     method: str,
     save_vis: bool,
+    enable_subject: bool = False,
+    offline: bool = False,
     max_frames: int = 60,
     max_side: int = 512,
 ) -> DynamicsDetail:
@@ -150,6 +240,8 @@ def analyze_video(
     print(f"\n{'='*60}")
     print(f"  视频: {Path(video_path).name}")
     print(f"  光流: {method.upper()}")
+    if enable_subject:
+        print(f"  主体分割: 启用")
     print(f"{'='*60}")
 
     t0 = time.time()
@@ -169,17 +261,43 @@ def analyze_video(
     t_flow = time.time() - t0
     print(f"  光流: {len(flows)} 帧 ({t_flow:.1f}s)")
 
-    score, detail = compute_dynamics_score(flows)
+    # 主体分割 + 可感知运动评分
+    subject_detail: SubjectMotionDetail | None = None
+    masks: list[np.ndarray] | None = None
+    if enable_subject:
+        t0 = time.time()
+        masks, ratios, seg_method = extract_subject_masks_standalone(
+            frames, device, offline=offline
+        )
+        t_seg = time.time() - t0
+        print(f"  主体分割: {seg_method} ({t_seg:.1f}s)")
 
-    print(f"\n  ── 五分量得分 ──")
+        if seg_method != "none":
+            _, subject_detail = compute_subject_motion_score(flows, masks, ratios)
+
+    score, detail = compute_dynamics_score(
+        flows, subject_motion=subject_detail
+    )
+
+    print(f"\n  ── 分量得分 ──")
     print(f"  光流幅度     (flow_magnitude):     {detail.flow_magnitude:.4f}")
     print(f"  空间覆盖率   (spatial_coverage):    {detail.spatial_coverage:.4f}")
     print(f"  时序变化     (temporal_variation):  {detail.temporal_variation:.4f}")
     print(f"  空间一致性   (spatial_consistency): {detail.spatial_consistency:.4f}")
     print(f"  相机因子     (camera_factor):       {detail.camera_factor:.4f}")
+    if detail.subject_perceptual is not None:
+        print(f"  主体可感知   (subject_perceptual): {detail.subject_perceptual:.4f}")
     print(f"  场景类型:     {detail.scene_type}")
     print(f"\n  >>> 动态度总分: {detail.unified_score:.4f}")
     print(f"  >>> {detail.interpretation}")
+
+    # 主体运动详情
+    if subject_detail is not None:
+        print(f"\n  ── 主体运动详情 ──")
+        print(f"  主体运动幅度:   {subject_detail.subject_magnitude:.3f} px/frame")
+        print(f"  背景运动幅度:   {subject_detail.background_magnitude:.3f} px/frame")
+        print(f"  可感知得分:     {subject_detail.perceptual_score:.4f}")
+        print(f"  主体平均占比:   {subject_detail.subject_ratio_mean:.2%}")
 
     # 额外统计
     mags = [float(np.mean(np.sqrt(fx**2 + fy**2))) for fx, fy in flows]
@@ -191,7 +309,7 @@ def analyze_video(
 
     if save_vis:
         out_dir = ROOT / "outputs" / "dynamics"
-        save_visualizations(flows, detail, name, out_dir)
+        save_visualizations(flows, detail, name, out_dir, masks=masks)
 
     return detail
 
@@ -201,6 +319,12 @@ def main() -> None:
     parser.add_argument("--input", required=True, help="视频文件或目录")
     parser.add_argument("--device", default="cuda", help="推理设备")
     parser.add_argument("--method", default="raft", choices=["raft", "farneback"])
+    parser.add_argument("--subject", action="store_true", help="启用主体分割 (SAM2)")
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        help="离线模式：禁止联网下载模型资源（缺本地资源时会失败）",
+    )
     parser.add_argument("--save-vis", action="store_true", help="保存光流可视化")
     parser.add_argument("--max-frames", type=int, default=60, help="最大帧数")
     parser.add_argument("--max-side", type=int, default=512, help="长边最大像素")
@@ -220,11 +344,20 @@ def main() -> None:
         return
 
     print(f"共 {len(videos)} 个视频，设备: {args.device}，方法: {args.method}")
+    if args.subject:
+        print("主体分割: 启用 (SAM2 + Grounding DINO)")
+    if args.offline:
+        os.environ["AIGC_OFFLINE_MODE"] = "1"
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+        print("离线模式: 启用（仅使用本地 .cache 资源）")
 
     results: list[tuple[str, DynamicsDetail]] = []
     for v in videos:
         detail = analyze_video(
             str(v), args.device, args.method, args.save_vis,
+            enable_subject=args.subject,
+            offline=args.offline,
             max_frames=args.max_frames, max_side=args.max_side,
         )
         results.append((v.name, detail))
@@ -233,11 +366,17 @@ def main() -> None:
         print(f"\n{'='*60}")
         print("  汇总")
         print(f"{'='*60}")
-        print(f"  {'视频':<45} {'动态度':>6} {'场景':>8}")
-        print(f"  {'-'*45} {'-'*6} {'-'*8}")
+        header = f"  {'视频':<45} {'动态度':>6} {'场景':>8}"
+        if args.subject:
+            header += f" {'主体感知':>8}"
+        print(header)
+        print(f"  {'-'*45} {'-'*6} {'-'*8}" + (" " + "-"*8 if args.subject else ""))
         for name, d in results:
             short = name[:42] + "..." if len(name) > 45 else name
-            print(f"  {short:<45} {d.unified_score:>6.3f} {d.scene_type:>8}")
+            line = f"  {short:<45} {d.unified_score:>6.3f} {d.scene_type:>8}"
+            if args.subject and d.subject_perceptual is not None:
+                line += f" {d.subject_perceptual:>8.3f}"
+            print(line)
 
 
 if __name__ == "__main__":

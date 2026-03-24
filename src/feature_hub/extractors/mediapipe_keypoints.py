@@ -22,7 +22,7 @@ def _load_frames(video_path: str) -> tuple[list[np.ndarray], float]:
 
 
 def _get_holistic():
-    """懒加载 MediaPipe Holistic 模型单例（自包含，不依赖 temporal_reasoning）。"""
+    """懒加载 MediaPipe Holistic 模型单例（自包含，不依赖历史模块（已迁移））。"""
     global _holistic
     if _holistic is None:
         import mediapipe as mp

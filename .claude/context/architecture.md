@@ -4,7 +4,7 @@
 
 ```
 输入视频 → 预处理 → 多维度分析引擎 → 结果聚合 → 输出报告
-                    ├─ temporal_reasoning   (时序合理性)
+                    ├─ temporal_reasoning   (历史模块（已迁移）)
                     ├─ aux_motion_intensity (运动强度)
                     ├─ perceptual_quality   (感知质量)
                     └─ [扩展维度...]
@@ -22,6 +22,6 @@
 
 | 模块 | 职责 | 关键技术 |
 |------|------|---------|
-| `temporal_reasoning` | 时序结构一致性分析 | 光流, 实例跟踪, 关键点 |
+| `temporal_reasoning` | 历史模块（已迁移） | 光流, 实例跟踪, 关键点 |
 | `aux_motion_intensity` | 运动强度与场景分类 | RAFT, CoTracker, SAM2 |
 | `perceptual_quality` | 感知质量缺陷检测 | Q-Align |

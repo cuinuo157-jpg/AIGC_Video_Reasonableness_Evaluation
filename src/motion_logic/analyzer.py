@@ -8,6 +8,7 @@ import numpy as np
 from .config import MotionLogicConfig
 from .dynamics_scorer import compute_dynamics_score, DynamicsDetail
 from .smoothness_scorer import compute_flow_acceleration_smoothness
+from .subject_motion_scorer import compute_subject_motion_score, SubjectMotionDetail
 
 
 @dataclass
@@ -19,6 +20,7 @@ class MotionLogicResult:
     smoothness_score: float = 0.0
     naturalness_score: float | None = None
     naturalness_issues: list[str] = field(default_factory=list)
+    subject_motion_detail: SubjectMotionDetail | None = None
     motion_logic_score: float = 0.0
 
 
@@ -59,7 +61,21 @@ class MotionLogicAnalyzer:
         except (KeyError, Exception):
             pass  # camera_compensation 不可用，使用原始光流
 
-        dynamics, detail = compute_dynamics_score(flows, camera_magnitude)
+        # 尝试获取主体 mask 并计算可感知运动分数
+        subject_detail: SubjectMotionDetail | None = None
+        try:
+            if hub.has_extractor("subject_masks"):
+                seg_result = hub.get("subject_masks")
+                if seg_result and seg_result.masks and seg_result.method != "none":
+                    _, subject_detail = compute_subject_motion_score(
+                        flows, seg_result.masks, seg_result.subject_ratios,
+                    )
+        except (KeyError, Exception):
+            pass  # subject_masks 不可用，退回全局模式
+
+        dynamics, detail = compute_dynamics_score(
+            flows, camera_magnitude, subject_motion=subject_detail,
+        )
         smoothness = compute_flow_acceleration_smoothness(flows)
 
         naturalness = None
@@ -95,5 +111,6 @@ class MotionLogicAnalyzer:
             smoothness_score=smoothness,
             naturalness_score=naturalness,
             naturalness_issues=issues,
+            subject_motion_detail=subject_detail,
             motion_logic_score=float(np.clip(score, 0, 1)),
         )

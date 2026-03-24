@@ -1,0 +1,10 @@
+{
+  "applicable": true,
+  "skip_reason": null,
+  "temporal_coherence_score": 1.0,
+  "events_count": 0,
+  "abnormal_count": 0,
+  "events": [],
+  "video_path": "..\\data\\videos\\6706926-hd_1920_1080_25fps.mp4",
+  "elapsed_sec": 936.984
+}

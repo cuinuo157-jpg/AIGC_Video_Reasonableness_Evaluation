@@ -2,7 +2,7 @@
 
 ## 已完成
 - [DONE] Project structure initialized (2026-03-09)
-- [DONE] temporal_reasoning 模块基础实现
+- [DONE] temporal_reasoning 模块基础实现（历史模块（已迁移））
 - [DONE] aux_motion_intensity 模块基础实现
 - [DONE] perceptual_quality 模块基础实现
 - [DONE] unified_pipeline 统一流水线脚本

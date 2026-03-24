@@ -21,7 +21,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _RAFT_CORE_DIR = _PROJECT_ROOT / "third_party" / "RAFT" / "core"
 _DEFAULT_MODEL_CANDIDATES = [
     _PROJECT_ROOT / ".cache" / "raft-things.pth",
-    _PROJECT_ROOT / "third_party" / "pretrained_models" / "raft-things.pth",
+    _PROJECT_ROOT / ".cache" / "raft-sintel.pth",
 ]
 
 
@@ -30,6 +30,11 @@ def _find_raft_model() -> str | None:
         if p.exists():
             return str(p)
     return None
+
+
+def _raft_recommended_cache_paths() -> str:
+    """返回建议放置 RAFT 权重的 .cache 路径文本。"""
+    return " | ".join(str(p) for p in _DEFAULT_MODEL_CANDIDATES)
 
 
 # ── SimpleRAFT (自包含，不再依赖已删除的 aux_motion_intensity) ──
@@ -91,7 +96,11 @@ class SimpleRAFT:
             self.method = "farneback"
             return
         if not self.model_path or not Path(self.model_path).exists():
-            logger.warning("RAFT 模型权重未找到，回退到 Farneback")
+            logger.warning(
+                "RAFT 模型权重未找到，回退到 Farneback。"
+                "请将权重放到项目 .cache，例如: %s",
+                _raft_recommended_cache_paths(),
+            )
             self.method = "farneback"
             return
         if not _RAFT_CORE_DIR.exists():

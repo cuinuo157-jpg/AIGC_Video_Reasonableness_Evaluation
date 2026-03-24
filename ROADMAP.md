@@ -2,7 +2,7 @@
 
 ## v0.1 - MVP (当前)
 
-- [x] 时序合理性分析（temporal_reasoning）
+- [x] 时序连贯性分析（temporal_coherence, TCS-lite）
 - [x] 运动强度分析（aux_motion_intensity）
 - [x] 感知质量检测（perceptual_quality）
 - [x] 统一流水线脚本（unified_pipeline）

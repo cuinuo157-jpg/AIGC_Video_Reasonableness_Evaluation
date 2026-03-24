@@ -1,12 +1,15 @@
 # 统一评测流水线使用说明
 
+> 注意：此文档描述的是历史版 `unified_pipeline`（`temporal_reasoning` 为历史模块（已迁移））流程。  
+> 当前仓库主线已迁移到 `src/evaluation_pipeline.py` + `scripts/debug_*.py`，其中时序一致性使用 `temporal_coherence` 模块。
+
 ## 概述
 
 统一评测流水线整合了以下四个模块，实现视频的全面评测：
 
 1. **动态度检测 (aux_motion_intensity)**: 检测视频中的运动强度
 2. **模糊程度检测 (blur_new)**: 检测视频中的模糊异常
-3. **时序性评估 (temporal_reasoning)**: 评估视频的时序合理性
+3. **时序性评估 (temporal_reasoning, 历史模块（已迁移）)**: 评估视频的时序合理性
 4. **人体时序性 (region_analysis)**: 分析人体区域的时序一致性
 
 ## 特点
@@ -137,7 +140,7 @@ python scripts/unified_pipeline.py \
     "blur_ratio": 0.02,
     "mss_score": 0.98
   },
-  "temporal_reasoning": {
+  "temporal_reasoning（历史模块（已迁移））": {
     "motion_reasonableness_score": 0.85,
     "structure_stability_score": 0.90,
     "anomaly_count": 2,

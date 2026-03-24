@@ -12,16 +12,18 @@ from src.motion_logic.analyzer import MotionLogicAnalyzer
 from src.physics_consistency.analyzer import PhysicsConsistencyAnalyzer
 from src.background_consistency.analyzer import BackgroundConsistencyAnalyzer
 from src.perceptual_quality.analyzer import PerceptualQualityAnalyzer
+from src.temporal_coherence.analyzer import TemporalCoherenceAnalyzer
 from src.feature_hub.hub import create_default_hub, FeatureHub
 
 DEFAULT_WEIGHTS = {
-    "face_identity": 0.13,
-    "expression": 0.13,
-    "biological_anomaly": 0.17,
-    "motion_logic": 0.13,
-    "physics": 0.13,
-    "background": 0.17,
-    "perceptual_quality": 0.14,
+    "face_identity": 0.12,
+    "expression": 0.12,
+    "biological_anomaly": 0.15,
+    "motion_logic": 0.12,
+    "temporal_coherence": 0.10,
+    "physics": 0.12,
+    "background": 0.15,
+    "perceptual_quality": 0.12,
 }
 
 
@@ -62,6 +64,7 @@ _SCORE_ATTR_MAP = {
     "expression": "expression_score",
     "biological_anomaly": "bio_quality_score",
     "motion_logic": "motion_logic_score",
+    "temporal_coherence": "temporal_coherence_score",
     "physics": "physics_score",
     "background": "background_score",
     "perceptual_quality": "perceptual_quality_score",
@@ -85,6 +88,7 @@ class EvaluationPipeline:
             "expression": ExpressionAnalyzer(),
             "biological_anomaly": BiologicalAnomalyAnalyzer(mllm_client=mllm_client),
             "motion_logic": MotionLogicAnalyzer(mllm_client=mllm_client),
+            "temporal_coherence": TemporalCoherenceAnalyzer(),
             "physics": PhysicsConsistencyAnalyzer(mllm_client=mllm_client),
             "background": BackgroundConsistencyAnalyzer(),
             "perceptual_quality": PerceptualQualityAnalyzer(),

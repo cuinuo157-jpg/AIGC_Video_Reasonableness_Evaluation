@@ -43,7 +43,7 @@
 src/feature_hub/
 ├── hub.py              # 核心调度器，懒加载 + 缓存
 ├── extractors/
-│   ├── optical_flow.py    # RAFT 光流（复用 temporal_reasoning/motion_flow）
+│   ├── optical_flow.py    # RAFT 光流（历史模块（已迁移）路径说明）
 │   ├── segmentation.py    # SAM2 实例分割（复用 Grounded-SAM-2）
 │   ├── depth.py           # MiDaS/ZoeDepth 深度图（新增）
 │   ├── face_embedding.py  # InsightFace 人脸特征（新增）
@@ -469,7 +469,7 @@ src/
 ├── physics_consistency/          # [新增] D5: 物理常识
 ├── background_consistency/       # [新增] D6: 环境一致性（增强已有）
 ├── mllm/                         # [新增] MLLM 统一调用层
-├── temporal_reasoning/           # [保留] 被 FeatureHub 复用
+├── temporal_reasoning/           # 历史模块（已迁移）
 ├── aux_motion_intensity/         # [保留] 被 motion_logic 封装
 ├── aux_motion_intensity_2/       # [保留] 被 motion_logic 封装
 └── perceptual_quality/           # [保留] 被 motion_logic 封装

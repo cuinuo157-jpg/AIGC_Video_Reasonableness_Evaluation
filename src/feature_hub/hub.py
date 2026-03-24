@@ -80,4 +80,7 @@ def create_default_hub(video_path: str, device: str = "cuda") -> FeatureHub:
     from .extractors.raft_flow import extract_raft_flow
     hub.register_extractor("raft_flow", extract_raft_flow)
 
+    from .extractors.subject_segmentation import extract_subject_masks
+    hub.register_extractor("subject_masks", extract_subject_masks)
+
     return hub

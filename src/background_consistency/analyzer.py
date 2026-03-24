@@ -73,26 +73,6 @@ class BackgroundConsistencyAnalyzer:
         )
 
     def _try_region_analysis(self, frames: list[np.ndarray]) -> float | None:
-        """尝试使用 temporal_reasoning 区域分析，不可用时返回 None。"""
-        try:
-            from src.temporal_reasoning.region_analysis.region_temporal_change_detector import (
-                RegionTemporalChangeDetector,
-                RegionTemporalChangeConfig,
-            )
-            from src.temporal_reasoning.motion_flow.flow_analyzer import MotionFlowAnalyzer
-
-            flow_analyzer = MotionFlowAnalyzer()
-            detector = RegionTemporalChangeDetector(
-                flow_analyzer=flow_analyzer,
-                config=RegionTemporalChangeConfig(),
-            )
-            # 使用全帧作为 "区域"，检测整体时序变化异常
-            masks = [None] * len(frames)
-            result = detector.analyze(frames, masks, label="background")
-            # 从结果提取异常比率，转为分数
-            anomalies = result.get("anomaly_count", 0)
-            total = max(len(frames) - 1, 1)
-            return float(1.0 - min(anomalies / total, 1.0))
-        except (ImportError, Exception) as e:
-            logger.debug("区域分析不可用: %s", e)
-            return None
+        """历史模块（已迁移）接口占位，当前固定返回 None。"""
+        logger.debug("区域分析不可用: 历史模块（已迁移）")
+        return None

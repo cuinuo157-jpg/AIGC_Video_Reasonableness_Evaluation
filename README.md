@@ -6,7 +6,7 @@
 
 ## 功能概览
 
-- 🧠 **Temporal Reasoning**：基于光流、实例跟踪、关键点等信息评估视频在时间尺度上的结构合理性，支持可视化导出。
+- 🧠 **Temporal Coherence (TCS-lite)**：检测目标异常出现/消失，支持边缘进出、尺度变化与检测断点排除。
 - 📈 **Aux Motion Intensity**：衡量主体/背景运动强度与场景类别，支持 RAFT / CoTracker / SAM2 等多种组合。
 - 👁️ **Perceptual Quality**：借助 Q-Align 视频质量模型，对模糊等感知缺陷进行检测与报告生成。
 - 🎬 **Scene Realism & VLM Reasoning**：面向场景真实性、跨模态一致性等维度的扩展能力（脚本/模块化接口预留）。
@@ -20,21 +20,19 @@
 AIGC_Video_Reasonableness_Evaluation
 ├─ data/                   # 示例数据与测试视频（需按需放置）
 ├─ outputs/                # 任务结果输出目录（JSON、CSV、可视化图表等）
-├─ scripts/                # 命令行脚本入口，按功能划分子目录
-│  ├─ temporal_reasoning/  # 时序合理性分析脚本
-│  ├─ aux_motion_intensity/    # 旧版运动强度分析流程
-│  ├─ aux_motion_intensity_2/  # 基于 Grounded-SAM + CoTracker 的 PAS 流程
-│  ├─ perceptual_quality/  # 感知质量（模糊检测）脚本
-│  └─ ...                  # 其他场景/融合脚本
-├─ src/                    # 核心源码（按模块拆分）
-│  ├─ temporal_reasoning/
-│  ├─ aux_motion_intensity/
-│  ├─ aux_motion_intensity_2/
+├─ scripts/                # 命令行脚本入口（当前以 debug_* 为主）
+│  ├─ debug_dynamics.py
+│  ├─ debug_temporal_coherence.py
+│  ├─ debug_expression.py
+│  └─ ...
+├─ src/                    # 核心源码（按维度模块拆分）
+│  ├─ motion_logic/
+│  ├─ temporal_coherence/
+│  ├─ physics_consistency/
+│  ├─ background_consistency/
 │  ├─ perceptual_quality/
-│  ├─ scene_realism/
-│  ├─ fusion_engine/
-│  ├─ video_io/
-│  └─ vlm_reasoning/
+│  ├─ feature_hub/
+│  └─ ...
 ├─ third_party/            # 外部依赖仓库（Grounded-SAM-2、CoTracker、Q-Align、RAFT 等）
 └─ README.md               # 项目说明（本文档）
 ```
@@ -76,30 +74,29 @@ AIGC_Video_Reasonableness_Evaluation
 
 ## 快速上手
 
-### 1. 时序合理性分析
+### 1. 时序连贯性分析（TCS-lite）
 
 ```bash
-python scripts/temporal_reasoning/run_analysis.py \
-  --video path/to/video.mp4 \
-  --enable_structure_visualization \
-  --prompts "person" "car"
+python scripts/debug_temporal_coherence.py \
+  --input data/videos/sample.mp4 \
+  --device cuda
 ```
 
-- 结果将保存至 `outputs/temporal_reasoning/<video>_result.json`。
-- 若指定 `--enable_cotracker_visualization`，会额外生成 CoTracker 轨迹视频。
-- CLI 支持传入 YAML 配置，或通过命令行覆盖关键参数（设备、模型路径、可视化参数等）。
+- 结果默认保存至 `outputs/temporal_coherence/<video>_tcs.json`。
+- 当前实现为工程化 `TCS-lite`，基于 GroundingDINO 检测 + 轨迹关联规则。
 
-### 2. 可感知幅度（运动强度）分析
+### 2. 动态度分析
 
 ```bash
-python scripts/aux_motion_intensity_2/run_pas.py \
-  --meta_info_path data/meta_info.json \
-  --output_path outputs/pas_results.json \
-  --enable_scene_classification
+python scripts/debug_dynamics.py \
+  --input data/videos/sample.mp4 \
+  --device cuda \
+  --method raft \
+  --subject \
+  --save-vis
 ```
 
-- `meta_info.json` 应包含 `filepath`、`subject_noun` 等字段。
-- 输出会在原元数据中追加 `perceptible_amplitude_score` 字段，并生成汇总日志。
+- 光流/主体分割可视化输出到 `outputs/dynamics/`。
 
 ### 3. 模糊检测（感知质量）
 
@@ -119,7 +116,7 @@ python scripts/perceptual_quality/run_blur_detection.py \
 
 | 模块                       | 描述                                                                           | 主要依赖                                               |
 | -------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------ |
-| `temporal_reasoning`     | 光流、实例追踪、关键点分析三路融合，输出运动合理性、结构稳定性、异常列表等指标 | RAFT、Grounded-DINO、SAM2、CoTracker、MediaPipe/MMPose |
+| `temporal_coherence`   | 检测目标出现/消失时序一致性，输出异常事件与 TCS 分数                             | GroundingDINO、SAM2、OpenCV                             |
 | `aux_motion_intensity`   | 旧版运动强度分析流水线，仍可用于轻量评估                                       | OpenCV (Farneback/TV-L1)、RAFT                         |
 | `aux_motion_intensity_2` | 基于 Grounded-SAM + CoTracker 的 PAS 分析，支持场景分类/可视化                 | Grounded-SAM-2、CoTracker、Torch                       |
 | `perceptual_quality`     | 使用 Q-Align 质量模型检测模糊、生成报告                                        | Q-Align、Decord、Matplotlib                            |

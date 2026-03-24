@@ -81,7 +81,7 @@ def load_frames(video_path: str, sample_rate: int = 1) -> tuple[list[np.ndarray]
     return frames, fps
 
 
-# ── 2. MediaPipe 关键点提取（直接调用，不经过 temporal_reasoning） ──
+# ── 2. MediaPipe 关键点提取（直接调用，不经过历史模块（已迁移）） ──
 
 
 # MediaPipe 468-point face landmark 索引

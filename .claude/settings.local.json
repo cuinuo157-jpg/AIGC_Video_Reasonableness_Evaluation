@@ -4,7 +4,7 @@
       "Bash(echo \"EXIT:$?\")",
       "Bash(conda run -n VMBench pip install -e \"d:/workspace/projects/activate/AIGC_Video_Reasonableness_Evaluation\")",
       "Bash(conda run -n VMBench pytest \"d:/workspace/projects/activate/AIGC_Video_Reasonableness_Evaluation/tests/test_smoke.py\" -v)",
-      "Bash(ls -la src/temporal_reasoning/*/)",
+      "Bash(ls -la src/temporal_coherence/*/)",
       "Bash(wc -l src/**/*.py)",
       "WebSearch",
       "WebFetch(domain:arxiv.org)",
