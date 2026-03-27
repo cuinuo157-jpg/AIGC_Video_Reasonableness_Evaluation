@@ -7,7 +7,7 @@
 ## 功能概览
 
 - 🧠 **Temporal Coherence (TCS-lite)**：检测目标异常出现/消失，支持边缘进出、尺度变化与检测断点排除。
-- 📈 **Aux Motion Intensity**：衡量主体/背景运动强度与场景类别，支持 RAFT / CoTracker / SAM2 等多种组合。
+- 📈 **Motion Logic**：基于光流、相机补偿、主体分割的动态度评估，支持主体可感知运动评分与可视化。
 - 👁️ **Perceptual Quality**：借助 Q-Align 视频质量模型，对模糊等感知缺陷进行检测与报告生成。
 - 🎬 **Scene Realism & VLM Reasoning**：面向场景真实性、跨模态一致性等维度的扩展能力（脚本/模块化接口预留）。
 - 🛠️ **统一工具链**：脚本化的数据准备、批量执行、可视化与结果汇总；模块化配置，易于集成到生产/研究流程。
@@ -62,7 +62,7 @@ AIGC_Video_Reasonableness_Evaluation
 
    ```
    .cache/
-   ├─ grounddingdino_swinb_cogcoor.pth
+   ├─ groundingdino_swinb_cogcoor.pth
    ├─ sam_vit_h_4b8939.pth
    ├─ scaled_offline.pth                # CoTracker
    ├─ raft-things.pth                   # RAFT
@@ -79,11 +79,16 @@ AIGC_Video_Reasonableness_Evaluation
 ```bash
 python scripts/debug_temporal_coherence.py \
   --input data/videos/sample.mp4 \
-  --device cuda
+  --device cuda \
+  --save-det-vis
 ```
 
 - 结果默认保存至 `outputs/temporal_coherence/<video>_tcs.json`。
 - 当前实现为工程化 `TCS-lite`，基于 GroundingDINO 检测 + 轨迹关联规则。
+- 使用 `--save-det-vis` 时会额外输出关键帧检测框可视化与语义：
+  - `outputs/temporal_coherence/<video>_detections/*.jpg`
+  - `outputs/temporal_coherence/<video>_detections/<video>_detections.json`
+- 若需严格离线运行（不触发任何在线下载），可附加 `--offline`（需本地 `.cache` 资源完整）。
 
 ### 2. 动态度分析
 
@@ -117,7 +122,8 @@ python scripts/perceptual_quality/run_blur_detection.py \
 | 模块                       | 描述                                                                           | 主要依赖                                               |
 | -------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------ |
 | `temporal_coherence`   | 检测目标出现/消失时序一致性，输出异常事件与 TCS 分数                             | GroundingDINO、SAM2、OpenCV                             |
-| `aux_motion_intensity`   | 旧版运动强度分析流水线，仍可用于轻量评估                                       | OpenCV (Farneback/TV-L1)、RAFT                         |
+| `motion_logic`         | 动态度与平滑度评估，支持主体感知运动评分                                         | RAFT、OpenCV、SAM2、GroundingDINO                      |
+| `aux_motion_intensity`   | 历史模块（已迁移），保留兼容参考                                                | OpenCV (Farneback/TV-L1)、RAFT                         |
 | `aux_motion_intensity_2` | 基于 Grounded-SAM + CoTracker 的 PAS 分析，支持场景分类/可视化                 | Grounded-SAM-2、CoTracker、Torch                       |
 | `perceptual_quality`     | 使用 Q-Align 质量模型检测模糊、生成报告                                        | Q-Align、Decord、Matplotlib                            |
 | `scene_realism`          | 场景真实度相关接口预留模块                                                     | （按需扩展）                                           |
@@ -160,6 +166,9 @@ python scripts/perceptual_quality/run_blur_detection.py \
 4. **生成的可视化缺失**
 
    - 确认命令行参数已开启对应选项，并检查输出目录是否可写（Windows 下注意权限与路径长度）。
+5. **时序连贯性显示不可用（skip_reason=grounding dino unavailable）**
+
+   - 确认当前运行环境已安装 `addict` 等 GroundingDINO 依赖，并检查 `.cache` 中权重与 BERT 目录是否存在。
 
 ---
 
