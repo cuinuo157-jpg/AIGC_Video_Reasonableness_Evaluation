@@ -28,12 +28,11 @@
 ### FeatureHub 共享特征层 — **已完成**
 
 - 懒加载 + 内存缓存，避免多维度重复推理（节省 40-60% 推理时间）
-- 已实现提取器：光流 (Farneback)、人脸嵌入 (InsightFace ArcFace)、深度图 (MiDaS)
+- 已实现提取器：光流 (Farneback/RAFT)、人脸嵌入 (InsightFace ArcFace)、深度图 (MiDaS)、主体分割 (Grounding DINO + SAM2)
 - 工厂函数 `create_default_hub(video_path, device)` 一键创建
 
 **下一步：**
 
-- 接入 SAM2 实例分割提取器
 - 接入 CoTracker 点追踪提取器
 - 接入 MediaPipe Iris 瞳孔追踪提取器
 - 实现可选磁盘缓存（批量处理场景）
