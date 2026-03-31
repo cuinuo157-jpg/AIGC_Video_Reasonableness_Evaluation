@@ -64,6 +64,8 @@ def create_default_hub(video_path: str, device: str = "cuda") -> FeatureHub:
     from .extractors.video_frames import extract_video_frames
     from .extractors.camera_compensation import extract_camera_compensation
     from .extractors.keypoint_tracking import extract_keypoint_trajectories
+    from .extractors.cotracker_tracking import extract_cotracker_trajectories
+    from .extractors.iris_tracking import extract_iris_tracking
     from .extractors.au_features import extract_au_features
 
     hub = FeatureHub(video_path, device)
@@ -73,7 +75,11 @@ def create_default_hub(video_path: str, device: str = "cuda") -> FeatureHub:
     hub.register_extractor("keypoints", extract_mediapipe_keypoints)
     hub.register_extractor("video_frames", extract_video_frames)
     hub.register_extractor("camera_compensation", extract_camera_compensation)
-    hub.register_extractor("tracking", extract_keypoint_trajectories)
+    # 默认 tracking: CoTracker（失败时在 extractor 内自动回退到 keypoint tracking）
+    hub.register_extractor("tracking", extract_cotracker_trajectories)
+    # 保留显式轻量轨迹 extractor（MediaPipe 关键点）
+    hub.register_extractor("tracking_keypoints", extract_keypoint_trajectories)
+    hub.register_extractor("iris_tracking", extract_iris_tracking)
     hub.register_extractor("au_features", extract_au_features)
 
     # RAFT 光流: RAFT 不可用时内部自动降级为 Farneback

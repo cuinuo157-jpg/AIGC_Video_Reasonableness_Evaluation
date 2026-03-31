@@ -28,13 +28,11 @@
 ### FeatureHub 共享特征层 — **已完成**
 
 - 懒加载 + 内存缓存，避免多维度重复推理（节省 40-60% 推理时间）
-- 已实现提取器：光流 (Farneback/RAFT)、人脸嵌入 (InsightFace ArcFace)、深度图 (MiDaS)、主体分割 (Grounding DINO + SAM2)
+- 已实现提取器：光流 (Farneback/RAFT)、人脸嵌入 (InsightFace ArcFace)、深度图 (MiDaS)、主体分割 (Grounding DINO + SAM2)、时序点追踪 (CoTracker + MediaPipe fallback)、瞳孔追踪 (MediaPipe Iris)
 - 工厂函数 `create_default_hub(video_path, device)` 一键创建
 
 **下一步：**
 
-- 接入 CoTracker 点追踪提取器
-- 接入 MediaPipe Iris 瞳孔追踪提取器
 - 实现可选磁盘缓存（批量处理场景）
 - 设备感知：显存不足时自动卸载已完成模型
 
@@ -130,7 +128,7 @@
 **下一步：**
 
 - 重力检测增强：结合深度图判断相机俯仰角补偿
-- 接入 CoTracker 实际追踪数据替代模拟数据
+- 利用 CoTracker 轨迹进一步细化自由落体/抛物线拟合与异常模式分类
 - MLLM 物理判定 prompt 扩展更多违规场景
 
 ### 6. 环境一致性（背景保持） — **已完成**
