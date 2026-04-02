@@ -171,6 +171,12 @@ def _try_load_grounding_dino(device: str, offline: bool = False) -> tuple[Any, A
 
         args = SLConfig.fromfile(config_path)
         args.device = gdino_device
+        # In inference-only flow, disable checkpoint to avoid
+        # reentrant warnings and unnecessary compute overhead.
+        if hasattr(args, "use_checkpoint"):
+            args.use_checkpoint = False
+        if hasattr(args, "use_transformer_ckpt"):
+            args.use_transformer_ckpt = False
         local_bert = _resolve_local_bert_path()
         if local_bert is not None:
             args.text_encoder_type = local_bert
@@ -274,7 +280,12 @@ def _detect_boxes_grounding_dino(
 
     model_device = str(next(gdino_model.parameters()).device)
     with torch.no_grad():
-        outputs = gdino_model(image_tensor[None].to(model_device), captions=[caption])
+        with torch.autocast(
+            device_type="cuda",
+            dtype=torch.bfloat16,
+            enabled=model_device.startswith("cuda"),
+        ):
+            outputs = gdino_model(image_tensor[None].to(model_device), captions=[caption])
 
     prediction_logits = outputs["pred_logits"].cpu().sigmoid()[0]  # (Nq, 256)
     prediction_boxes = outputs["pred_boxes"].cpu()[0]  # (Nq, 4), cxcywh normalized
@@ -338,11 +349,18 @@ def _segment_with_sam2_boxes(
 
     sam2_predictor.set_image(frame_rgb)
     masks_list = []
+    predictor_device = str(next(sam2_predictor.model.parameters()).device)
     for box in boxes:
-        masks, scores, _ = sam2_predictor.predict(
-            box=box,
-            multimask_output=True,
-        )
+        with torch.inference_mode():
+            with torch.autocast(
+                device_type="cuda",
+                dtype=torch.bfloat16,
+                enabled=predictor_device.startswith("cuda"),
+            ):
+                masks, scores, _ = sam2_predictor.predict(
+                    box=box,
+                    multimask_output=True,
+                )
         # 取分数最高的 mask
         best_idx = int(np.argmax(scores))
         masks_list.append(masks[best_idx])
@@ -360,10 +378,18 @@ def _segment_with_sam2_auto(
 ) -> np.ndarray:
     """SAM2 auto mask fallback: 全图分割取面积最大的 Top-K mask。"""
     try:
+        import torch
         from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 
         mask_generator = SAM2AutomaticMaskGenerator(sam2_predictor.model)
-        masks = mask_generator.generate(frame_rgb)
+        predictor_device = str(next(sam2_predictor.model.parameters()).device)
+        with torch.inference_mode():
+            with torch.autocast(
+                device_type="cuda",
+                dtype=torch.bfloat16,
+                enabled=predictor_device.startswith("cuda"),
+            ):
+                masks = mask_generator.generate(frame_rgb)
 
         if not masks:
             return np.zeros(frame_rgb.shape[:2], dtype=bool)
