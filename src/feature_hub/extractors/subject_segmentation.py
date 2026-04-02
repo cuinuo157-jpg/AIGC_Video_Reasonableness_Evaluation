@@ -280,12 +280,24 @@ def _detect_boxes_grounding_dino(
 
     model_device = str(next(gdino_model.parameters()).device)
     with torch.no_grad():
-        with torch.autocast(
-            device_type="cuda",
-            dtype=torch.bfloat16,
-            enabled=model_device.startswith("cuda"),
-        ):
-            outputs = gdino_model(image_tensor[None].to(model_device), captions=[caption])
+        try:
+            with torch.autocast(
+                device_type="cuda",
+                dtype=torch.float16,
+                enabled=model_device.startswith("cuda"),
+            ):
+                outputs = gdino_model(image_tensor[None].to(model_device), captions=[caption])
+        except RuntimeError as e:
+            # Some custom CUDA ops (e.g., ms_deform_attn) may not support reduced precision.
+            # Fallback to FP32 inference to keep pipeline usable.
+            if model_device.startswith("cuda") and "not implemented for" in str(e):
+                logger.warning(
+                    "GroundingDINO reduced-precision 推理失败（%s），自动回退 FP32。",
+                    e,
+                )
+                outputs = gdino_model(image_tensor[None].to(model_device), captions=[caption])
+            else:
+                raise
 
     prediction_logits = outputs["pred_logits"].cpu().sigmoid()[0]  # (Nq, 256)
     prediction_boxes = outputs["pred_boxes"].cpu()[0]  # (Nq, 4), cxcywh normalized
@@ -354,7 +366,7 @@ def _segment_with_sam2_boxes(
         with torch.inference_mode():
             with torch.autocast(
                 device_type="cuda",
-                dtype=torch.bfloat16,
+                dtype=torch.float16,
                 enabled=predictor_device.startswith("cuda"),
             ):
                 masks, scores, _ = sam2_predictor.predict(
@@ -386,7 +398,7 @@ def _segment_with_sam2_auto(
         with torch.inference_mode():
             with torch.autocast(
                 device_type="cuda",
-                dtype=torch.bfloat16,
+                dtype=torch.float16,
                 enabled=predictor_device.startswith("cuda"),
             ):
                 masks = mask_generator.generate(frame_rgb)
