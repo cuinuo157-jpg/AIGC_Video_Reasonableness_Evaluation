@@ -9,6 +9,10 @@ from .config import MotionLogicConfig
 from .dynamics_scorer import compute_dynamics_score, DynamicsDetail
 from .smoothness_scorer import compute_flow_acceleration_smoothness
 from .subject_motion_scorer import compute_subject_motion_score, SubjectMotionDetail
+from .trajectory_curvature_scorer import (
+    TrajectoryCurvatureDetail,
+    compute_trajectory_curvature_smoothness,
+)
 
 
 @dataclass
@@ -21,6 +25,9 @@ class MotionLogicResult:
     naturalness_score: float | None = None
     naturalness_issues: list[str] = field(default_factory=list)
     subject_motion_detail: SubjectMotionDetail | None = None
+    flow_smoothness_score: float = 0.0
+    trajectory_curvature_score: float | None = None
+    trajectory_curvature_detail: TrajectoryCurvatureDetail | None = None
     motion_logic_score: float = 0.0
 
 
@@ -76,7 +83,31 @@ class MotionLogicAnalyzer:
         dynamics, detail = compute_dynamics_score(
             flows, camera_magnitude, subject_motion=subject_detail,
         )
-        smoothness = compute_flow_acceleration_smoothness(flows)
+        flow_smoothness = compute_flow_acceleration_smoothness(flows)
+
+        trajectory_score: float | None = None
+        trajectory_detail: TrajectoryCurvatureDetail | None = None
+        try:
+            if hub.has_extractor("tracking"):
+                trajectories = hub.get("tracking")
+                if trajectories:
+                    trajectory_score, trajectory_detail = compute_trajectory_curvature_smoothness(
+                        trajectories
+                    )
+        except (KeyError, Exception):
+            pass
+
+        if trajectory_score is not None:
+            acc_w = self.config.smoothness_acceleration_weight
+            traj_w = getattr(
+                self.config,
+                "smoothness_trajectory_weight",
+                getattr(self.config, "smoothness_qalign_weight", 0.5),
+            )
+            total = max(acc_w + traj_w, 1e-8)
+            smoothness = (acc_w * flow_smoothness + traj_w * trajectory_score) / total
+        else:
+            smoothness = flow_smoothness
 
         naturalness = None
         issues: list[str] = []
@@ -112,5 +143,8 @@ class MotionLogicAnalyzer:
             naturalness_score=naturalness,
             naturalness_issues=issues,
             subject_motion_detail=subject_detail,
+            flow_smoothness_score=flow_smoothness,
+            trajectory_curvature_score=trajectory_score,
+            trajectory_curvature_detail=trajectory_detail,
             motion_logic_score=float(np.clip(score, 0, 1)),
         )

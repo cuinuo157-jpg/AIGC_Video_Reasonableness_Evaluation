@@ -105,3 +105,48 @@ def test_motion_logic_subject_masks_none_method():
     assert result.applicable is True
     assert result.subject_motion_detail is None
     assert result.dynamics_detail.subject_perceptual is None
+
+
+def test_motion_logic_with_tracking_curvature_keeps_high_score_when_smooth():
+    flows = [
+        (np.ones((32, 32), dtype=np.float32), np.ones((32, 32), dtype=np.float32))
+        for _ in range(12)
+    ]
+
+    t = 12
+    traj = np.stack([
+        np.linspace(0.1, 0.6, t, dtype=np.float32),
+        np.linspace(0.2, 0.7, t, dtype=np.float32),
+    ], axis=1)
+
+    hub = _make_hub({"optical_flow": flows, "tracking": [traj]})
+    result = MotionLogicAnalyzer(MotionLogicConfig(enable_mllm=False)).analyze(hub)
+
+    assert result.applicable is True
+    assert result.trajectory_curvature_score is not None
+    assert result.trajectory_curvature_score > 0.9
+    assert result.smoothness_score > 0.8
+
+
+def test_motion_logic_with_tracking_curvature_penalizes_teleport():
+    flows = [
+        (np.ones((32, 32), dtype=np.float32), np.ones((32, 32), dtype=np.float32))
+        for _ in range(20)
+    ]
+
+    # Mostly smooth trajectory with one sudden jump + turn (teleport-like)
+    traj = np.array(
+        [[0.10, 0.10], [0.12, 0.11], [0.14, 0.12], [0.16, 0.13], [0.18, 0.14],
+         [0.20, 0.15], [0.22, 0.16], [0.24, 0.17], [0.26, 0.18], [0.28, 0.19],
+         [0.30, 0.20], [0.32, 0.21], [0.34, 0.22], [0.80, 0.85], [0.36, 0.24],
+         [0.38, 0.25], [0.40, 0.26], [0.42, 0.27], [0.44, 0.28], [0.46, 0.29]],
+        dtype=np.float32,
+    )
+
+    hub = _make_hub({"optical_flow": flows, "tracking": [traj]})
+    result = MotionLogicAnalyzer(MotionLogicConfig(enable_mllm=False)).analyze(hub)
+
+    assert result.applicable is True
+    assert result.trajectory_curvature_score is not None
+    assert result.trajectory_curvature_score < 0.9
+    assert result.smoothness_score < result.flow_smoothness_score
