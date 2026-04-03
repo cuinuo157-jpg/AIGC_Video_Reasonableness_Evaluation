@@ -94,7 +94,7 @@
     - 手：手指融合、骨段长度比例异常、关节角度超出范围、手指数量 ≠ 5 等结构异常
   - **Level 3 MLLM 兜底：** 对 L1/L2 提取的疑似异常帧进行 ROI 裁剪，交给 MLLM 做语义判定（可选，按配置启用）
   - **评分：** 三级得分 `level1_score/level2_score/level3_score` 按权重
-    `bio_quality_score = 0.3×L1 + 0.4×L2 + 0.3×L3`，并提供按部位正常帧比例（VMBench OIS 风格）
+  `bio_quality_score = 0.3×L1 + 0.4×L2 + 0.3×L3`，并提供按部位正常帧比例（VMBench OIS 风格）
 
 **下一步：**
 
