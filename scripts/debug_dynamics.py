@@ -82,8 +82,9 @@ def extract_flows(
 
 def load_video_rgb(
     path: str, max_frames: int = 60, max_side: int = 512
-) -> list[np.ndarray]:
+) -> tuple[list[np.ndarray], float]:
     cap = cv2.VideoCapture(path)
+    fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     step = max(1, total // max_frames) if total > max_frames else 1
     frames: list[np.ndarray] = []
@@ -105,7 +106,7 @@ def load_video_rgb(
         if len(frames) >= max_frames:
             break
     cap.release()
-    return frames
+    return frames, fps / step
 
 
 # ── 主体分割 ─────────────────────────────────────────────────
@@ -365,6 +366,140 @@ def _save_trajectory_curvature_vis(
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _mad(values: np.ndarray) -> float:
+    if values.size == 0:
+        return 0.0
+    med = float(np.median(values))
+    return float(np.median(np.abs(values - med)))
+
+
+def _collect_trajectory_events(trajectories: list[np.ndarray]) -> list[dict]:
+    """Collect teleport-like events from curvature-rate spikes."""
+    events: list[dict] = []
+    for tid, traj in enumerate(trajectories):
+        if traj.ndim != 2 or traj.shape[1] != 2:
+            continue
+        valid = np.all(np.isfinite(traj), axis=1)
+        if int(np.sum(valid)) < 6:
+            continue
+        frame_ids = np.where(valid)[0]
+        points = traj[valid]
+        velocity = np.diff(points, axis=0)
+        speed = np.linalg.norm(velocity, axis=1)
+        if speed.size < 5:
+            continue
+
+        v1 = velocity[:-1]
+        v2 = velocity[1:]
+        denom = (np.linalg.norm(v1, axis=1) * np.linalg.norm(v2, axis=1)) + 1e-8
+        cos_theta = np.sum(v1 * v2, axis=1) / denom
+        curvature = np.arccos(np.clip(cos_theta, -1.0, 1.0))
+        if curvature.size < 4:
+            continue
+
+        curvature_rate = np.abs(np.diff(curvature))
+        speed_for_rate = speed[2:]
+        if curvature_rate.size != speed_for_rate.size:
+            n = min(curvature_rate.size, speed_for_rate.size)
+            curvature_rate = curvature_rate[:n]
+            speed_for_rate = speed_for_rate[:n]
+        if curvature_rate.size == 0:
+            continue
+
+        curv_thr = float(np.median(curvature_rate)) + max(6.0 * _mad(curvature_rate), 0.25)
+        speed_thr = float(np.median(speed_for_rate)) + max(6.0 * _mad(speed_for_rate), 0.01)
+        abnormal = np.where((curvature_rate > curv_thr) & (speed_for_rate > speed_thr))[0]
+        for idx in abnormal:
+            # curvature_rate index i aligns roughly to valid point i+3.
+            pidx = min(idx + 3, len(points) - 1)
+            fidx = int(frame_ids[pidx])
+            events.append({
+                "track_id": tid,
+                "frame_idx": fidx,
+                "curvature_rate": float(curvature_rate[idx]),
+                "speed": float(speed_for_rate[idx]),
+                "x": float(points[pidx, 0]),
+                "y": float(points[pidx, 1]),
+            })
+    events.sort(key=lambda e: (e["frame_idx"], -e["curvature_rate"]))
+    return events
+
+
+def _save_trajectory_event_artifacts(
+    frames_rgb: list[np.ndarray],
+    trajectories: list[np.ndarray],
+    events: list[dict],
+    out_dir: Path,
+    video_name: str,
+    fps: float,
+    save_video: bool,
+    save_events: bool,
+) -> None:
+    if not frames_rgb or not trajectories:
+        return
+
+    h, w = frames_rgb[0].shape[:2]
+    max_draw = min(len(trajectories), 120)
+
+    if save_video:
+        track_video = out_dir / f"{video_name}_trajectory_overlay.mp4"
+        writer = cv2.VideoWriter(
+            str(track_video),
+            cv2.VideoWriter_fourcc(*"mp4v"),
+            max(1.0, fps),
+            (w, h),
+        )
+        for fidx in range(len(frames_rgb)):
+            frame = cv2.cvtColor(frames_rgb[fidx], cv2.COLOR_RGB2BGR).copy()
+            for tid in range(max_draw):
+                traj = trajectories[tid]
+                valid = np.all(np.isfinite(traj), axis=1)
+                mask = valid & (np.arange(len(traj)) <= fidx)
+                pts = traj[mask]
+                if len(pts) < 2:
+                    continue
+                px = np.clip((pts[:, 0] * (w - 1)).astype(np.int32), 0, w - 1)
+                py = np.clip((pts[:, 1] * (h - 1)).astype(np.int32), 0, h - 1)
+                poly = np.stack([px, py], axis=1).reshape(-1, 1, 2)
+                color = (
+                    int((37 * tid) % 255),
+                    int((83 * tid + 80) % 255),
+                    int((127 * tid + 160) % 255),
+                )
+                cv2.polylines(frame, [poly], isClosed=False, color=color, thickness=1)
+            for ev in events:
+                if ev["frame_idx"] == fidx:
+                    x = int(np.clip(ev["x"] * (w - 1), 0, w - 1))
+                    y = int(np.clip(ev["y"] * (h - 1), 0, h - 1))
+                    cv2.circle(frame, (x, y), 6, (0, 0, 255), 2)
+            writer.write(frame)
+        writer.release()
+
+    if save_events:
+        event_json = out_dir / f"{video_name}_trajectory_events.json"
+        event_json.write_text(json.dumps(events, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        event_frames = sorted({int(e["frame_idx"]) for e in events})[:20]
+        for fidx in event_frames:
+            frame = cv2.cvtColor(frames_rgb[fidx], cv2.COLOR_RGB2BGR).copy()
+            frame_events = [e for e in events if int(e["frame_idx"]) == fidx]
+            for ev in frame_events:
+                x = int(np.clip(ev["x"] * (w - 1), 0, w - 1))
+                y = int(np.clip(ev["y"] * (h - 1), 0, h - 1))
+                cv2.circle(frame, (x, y), 8, (0, 0, 255), 2)
+                cv2.putText(
+                    frame,
+                    f"trk{ev['track_id']} cr={ev['curvature_rate']:.2f}",
+                    (x + 6, y - 6),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.4,
+                    (0, 0, 255),
+                    1,
+                    cv2.LINE_AA,
+                )
+            cv2.imwrite(str(out_dir / f"{video_name}_event_{fidx:04d}.png"), frame)
+
+
 # ── 主流程 ────────────────────────────────────────────────────
 
 def analyze_video(
@@ -376,6 +511,8 @@ def analyze_video(
     offline: bool = False,
     max_frames: int = 60,
     max_side: int = 512,
+    save_track_video: bool = False,
+    save_track_events: bool = False,
 ) -> DynamicsDetail:
     name = Path(video_path).stem
     print(f"\n{'='*60}")
@@ -386,7 +523,7 @@ def analyze_video(
     print(f"{'='*60}")
 
     t0 = time.time()
-    frames = load_video_rgb(video_path, max_frames=max_frames, max_side=max_side)
+    frames, fps = load_video_rgb(video_path, max_frames=max_frames, max_side=max_side)
     t_load = time.time() - t0
     if frames:
         print(f"  帧数: {len(frames)}, 分辨率: {frames[0].shape[1]}x{frames[0].shape[0]} ({t_load:.1f}s)")
@@ -422,6 +559,7 @@ def analyze_video(
     )
     t_track = time.time() - t0
     traj_score, traj_detail = compute_trajectory_curvature_smoothness(trajectories)
+    trajectory_events = _collect_trajectory_events(trajectories)
     print(f"  轨迹提取: {len(trajectories)} 条 ({t_track:.1f}s)")
 
     score, detail = compute_dynamics_score(
@@ -455,6 +593,7 @@ def analyze_video(
         print(f"  有效轨迹数:     {traj_detail.valid_trajectory_count}")
         print(f"  异常事件数:     {traj_detail.abnormal_event_count}")
         print(f"  异常事件占比:   {traj_detail.abnormal_ratio:.4f}")
+        print(f"  事件明细数:     {len(trajectory_events)}")
 
     # 额外统计
     mags = [float(np.mean(np.sqrt(fx**2 + fy**2))) for fx, fy in flows]
@@ -475,6 +614,16 @@ def analyze_video(
             trajectories=trajectories,
             trajectory_detail=traj_detail,
         )
+        _save_trajectory_event_artifacts(
+            frames,
+            trajectories,
+            trajectory_events,
+            out_dir,
+            name,
+            fps=fps,
+            save_video=save_track_video,
+            save_events=save_track_events,
+        )
 
     return detail
 
@@ -491,6 +640,16 @@ def main() -> None:
         help="离线模式：禁止联网下载模型资源（缺本地资源时会失败）",
     )
     parser.add_argument("--save-vis", action="store_true", help="保存光流可视化")
+    parser.add_argument(
+        "--save-track-video",
+        action="store_true",
+        help="保存轨迹逐帧叠加视频 (mp4)",
+    )
+    parser.add_argument(
+        "--save-track-events",
+        action="store_true",
+        help="保存轨迹异常事件帧与 JSON 明细",
+    )
     parser.add_argument("--max-frames", type=int, default=60, help="最大帧数")
     parser.add_argument("--max-side", type=int, default=512, help="长边最大像素")
     args = parser.parse_args()
@@ -524,6 +683,8 @@ def main() -> None:
             enable_subject=args.subject,
             offline=args.offline,
             max_frames=args.max_frames, max_side=args.max_side,
+            save_track_video=args.save_track_video,
+            save_track_events=args.save_track_events,
         )
         results.append((v.name, detail))
 
