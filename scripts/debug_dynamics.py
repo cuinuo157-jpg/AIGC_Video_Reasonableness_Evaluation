@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -35,6 +36,10 @@ from src.motion_logic.dynamics_scorer import compute_dynamics_score, DynamicsDet
 from src.motion_logic.subject_motion_scorer import (
     compute_subject_motion_score,
     SubjectMotionDetail,
+)
+from src.motion_logic.trajectory_curvature_scorer import (
+    TrajectoryCurvatureDetail,
+    compute_trajectory_curvature_smoothness,
 )
 
 
@@ -162,6 +167,69 @@ def extract_subject_masks_standalone(
     return masks, ratios, method
 
 
+def extract_tracking_trajectories_standalone(
+    video_path: str,
+    frames_rgb: list[np.ndarray],
+    device: str,
+    masks: list[np.ndarray] | None = None,
+) -> list[np.ndarray]:
+    """独立提取时序轨迹（优先 CoTracker，失败自动回退关键点轨迹）。"""
+    from src.feature_hub.extractors.cotracker_tracking import (
+        extract_cotracker_trajectories,
+    )
+    from src.feature_hub.extractors.subject_segmentation import SubjectSegmentationResult
+
+    class _HubProxy:
+        def __init__(
+            self,
+            frames_bgr: list[np.ndarray],
+            subject_masks: SubjectSegmentationResult | None,
+            keypoints_loader,
+        ) -> None:
+            self._frames_bgr = frames_bgr
+            self._subject_masks = subject_masks
+            self._keypoints_seq: list[dict] | None = None
+            self._keypoints_loader = keypoints_loader
+
+        def get(self, key: str):
+            if key == "video_frames":
+                return self._frames_bgr
+            if key == "subject_masks" and self._subject_masks is not None:
+                return self._subject_masks
+            if key == "keypoints":
+                if self._keypoints_seq is None:
+                    try:
+                        self._keypoints_seq = self._keypoints_loader()
+                    except Exception as e:  # noqa: BLE001
+                        # Keep debug pipeline robust even if MediaPipe/protobuf
+                        # environment is incompatible on this machine.
+                        print(f"  [WARN] keypoints 提取失败，轨迹回退不可用: {e}")
+                        self._keypoints_seq = []
+                return self._keypoints_seq
+            raise KeyError(key)
+
+    frames_bgr = [cv2.cvtColor(f, cv2.COLOR_RGB2BGR) for f in frames_rgb]
+    subject_result = None
+    if masks is not None:
+        subject_result = SubjectSegmentationResult(
+            masks=masks,
+            subject_ratios=[],
+            method="external",
+        )
+
+    # CoTracker failure path may request hub.get("keypoints"). We use lazy loading
+    # so MediaPipe issues won't break the whole dynamics debug run.
+    def _load_keypoints():
+        from src.feature_hub.extractors.mediapipe_keypoints import (
+            extract_mediapipe_keypoints,
+        )
+
+        return extract_mediapipe_keypoints(video_path, device)
+
+    hub_proxy = _HubProxy(frames_bgr, subject_result, _load_keypoints)
+    return extract_cotracker_trajectories(video_path, device, hub_proxy)
+
+
 # ── 光流可视化 ────────────────────────────────────────────────
 
 def flow_to_color(flow_x: np.ndarray, flow_y: np.ndarray) -> np.ndarray:
@@ -181,6 +249,8 @@ def save_visualizations(
     video_name: str,
     out_dir: Path,
     masks: list[np.ndarray] | None = None,
+    trajectories: list[np.ndarray] | None = None,
+    trajectory_detail: TrajectoryCurvatureDetail | None = None,
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     # 保存前 5 帧和最后 1 帧的光流可视化
@@ -221,7 +291,78 @@ def save_visualizations(
         np.clip(mean_mag * 10, 0, 255).astype(np.uint8), cv2.COLORMAP_JET
     )
     cv2.imwrite(str(out_dir / f"{video_name}_mean_mag.png"), heatmap)
+
+    if trajectories:
+        _save_trajectory_curvature_vis(
+            trajectories,
+            out_dir / f"{video_name}_trajectory_curvature.png",
+            out_dir / f"{video_name}_trajectory_curvature.json",
+            trajectory_detail=trajectory_detail,
+            image_shape=flows[0][0].shape,
+        )
     print(f"  可视化已保存到 {out_dir}")
+
+
+def _save_trajectory_curvature_vis(
+    trajectories: list[np.ndarray],
+    image_path: Path,
+    json_path: Path,
+    trajectory_detail: TrajectoryCurvatureDetail | None,
+    image_shape: tuple[int, int],
+) -> None:
+    """保存轨迹曲率可视化（归一化轨迹渲染到画布）。"""
+    h, w = image_shape
+    canvas = np.zeros((h, w, 3), dtype=np.uint8)
+    canvas[:] = (20, 20, 20)
+
+    max_draw = min(len(trajectories), 100)
+    for idx in range(max_draw):
+        traj = trajectories[idx]
+        if traj.ndim != 2 or traj.shape[1] != 2:
+            continue
+        valid = np.all(np.isfinite(traj), axis=1)
+        pts = traj[valid]
+        if len(pts) < 2:
+            continue
+        px = np.clip((pts[:, 0] * (w - 1)).astype(np.int32), 0, w - 1)
+        py = np.clip((pts[:, 1] * (h - 1)).astype(np.int32), 0, h - 1)
+        poly = np.stack([px, py], axis=1).reshape(-1, 1, 2)
+        color = (
+            int((37 * idx) % 255),
+            int((83 * idx + 80) % 255),
+            int((127 * idx + 160) % 255),
+        )
+        cv2.polylines(canvas, [poly], isClosed=False, color=color, thickness=1)
+        cv2.circle(canvas, tuple(poly[-1, 0]), 2, color, -1)
+
+    lines = [
+        f"tracks(total/valid): {len(trajectories)}/{getattr(trajectory_detail, 'valid_trajectory_count', 0)}",
+        f"curvature_score: {getattr(trajectory_detail, 'score', 1.0):.4f}",
+        f"abnormal_events: {getattr(trajectory_detail, 'abnormal_event_count', 0)}",
+        f"abnormal_ratio: {getattr(trajectory_detail, 'abnormal_ratio', 0.0):.4f}",
+    ]
+    for i, line in enumerate(lines):
+        cv2.putText(
+            canvas,
+            line,
+            (10, 25 + i * 22),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (220, 220, 220),
+            1,
+            cv2.LINE_AA,
+        )
+
+    cv2.imwrite(str(image_path), canvas)
+    payload = {
+        "trajectory_count": len(trajectories),
+        "visualized_track_count": max_draw,
+        "trajectory_curvature_score": getattr(trajectory_detail, "score", 1.0),
+        "valid_trajectory_count": getattr(trajectory_detail, "valid_trajectory_count", 0),
+        "abnormal_event_count": getattr(trajectory_detail, "abnormal_event_count", 0),
+        "abnormal_ratio": getattr(trajectory_detail, "abnormal_ratio", 0.0),
+    }
+    json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 # ── 主流程 ────────────────────────────────────────────────────
@@ -275,6 +416,14 @@ def analyze_video(
         if seg_method != "none":
             _, subject_detail = compute_subject_motion_score(flows, masks, ratios)
 
+    t0 = time.time()
+    trajectories = extract_tracking_trajectories_standalone(
+        video_path, frames, device, masks=masks
+    )
+    t_track = time.time() - t0
+    traj_score, traj_detail = compute_trajectory_curvature_smoothness(trajectories)
+    print(f"  轨迹提取: {len(trajectories)} 条 ({t_track:.1f}s)")
+
     score, detail = compute_dynamics_score(
         flows, subject_motion=subject_detail
     )
@@ -287,6 +436,7 @@ def analyze_video(
     print(f"  相机因子     (camera_factor):       {detail.camera_factor:.4f}")
     if detail.subject_perceptual is not None:
         print(f"  主体可感知   (subject_perceptual): {detail.subject_perceptual:.4f}")
+    print(f"  轨迹曲率平滑 (trajectory_curvature): {traj_score:.4f}")
     print(f"  场景类型:     {detail.scene_type}")
     print(f"\n  >>> 动态度总分: {detail.unified_score:.4f}")
     print(f"  >>> {detail.interpretation}")
@@ -299,6 +449,13 @@ def analyze_video(
         print(f"  可感知得分:     {subject_detail.perceptual_score:.4f}")
         print(f"  主体平均占比:   {subject_detail.subject_ratio_mean:.2%}")
 
+    if traj_detail.trajectory_count > 0:
+        print(f"\n  ── 轨迹曲率详情 ──")
+        print(f"  总轨迹数:       {traj_detail.trajectory_count}")
+        print(f"  有效轨迹数:     {traj_detail.valid_trajectory_count}")
+        print(f"  异常事件数:     {traj_detail.abnormal_event_count}")
+        print(f"  异常事件占比:   {traj_detail.abnormal_ratio:.4f}")
+
     # 额外统计
     mags = [float(np.mean(np.sqrt(fx**2 + fy**2))) for fx, fy in flows]
     print(f"\n  ── 光流统计 ──")
@@ -309,7 +466,15 @@ def analyze_video(
 
     if save_vis:
         out_dir = ROOT / "outputs" / "dynamics"
-        save_visualizations(flows, detail, name, out_dir, masks=masks)
+        save_visualizations(
+            flows,
+            detail,
+            name,
+            out_dir,
+            masks=masks,
+            trajectories=trajectories,
+            trajectory_detail=traj_detail,
+        )
 
     return detail
 
