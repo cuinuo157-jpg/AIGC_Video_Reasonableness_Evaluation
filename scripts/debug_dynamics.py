@@ -113,7 +113,7 @@ def load_video_rgb(
 
 def extract_subject_masks_standalone(
     frames_rgb: list[np.ndarray], device: str, offline: bool = False
-) -> tuple[list[np.ndarray], list[float], str]:
+) -> tuple[list[np.ndarray], list[float], str, dict]:
     """独立的主体分割，不依赖 FeatureHub。"""
     from src.feature_hub.extractors.subject_segmentation import (
         _try_load_sam2,
@@ -128,6 +128,11 @@ def extract_subject_masks_standalone(
     n = len(frames_rgb)
     masks: list[np.ndarray] = [np.zeros(frames_rgb[0].shape[:2], dtype=bool)] * n
     method = "none"
+    detection_report: dict = {
+        "sampled_frames": [],
+        "label_histogram": {},
+        "max_box_area_ratio": 0.0,
+    }
 
     sam2_predictor = _try_load_sam2(device)
     gdino = (
@@ -146,7 +151,41 @@ def extract_subject_masks_standalone(
 
             if gdino is not None:
                 processor, model = gdino
-                boxes = _detect_boxes_grounding_dino(frame, processor, model, device)
+                pred = _detect_boxes_grounding_dino(
+                    frame,
+                    processor,
+                    model,
+                    device,
+                    return_semantics=True,
+                )
+                boxes = None
+                labels: list[str] = []
+                scores: np.ndarray = np.array([])
+                if pred is not None:
+                    boxes, labels, scores = pred
+                    h, w = frame.shape[:2]
+                    area_ratios = []
+                    for box in boxes:
+                        x1, y1, x2, y2 = box
+                        area = max(0.0, float(x2 - x1)) * max(0.0, float(y2 - y1))
+                        ratio = float(area / max(h * w, 1))
+                        area_ratios.append(ratio)
+                        detection_report["max_box_area_ratio"] = max(
+                            detection_report["max_box_area_ratio"],
+                            ratio,
+                        )
+                    detection_report["sampled_frames"].append(
+                        {
+                            "frame_idx": int(idx),
+                            "labels": labels,
+                            "scores": [float(s) for s in scores.tolist()],
+                            "box_area_ratios": area_ratios,
+                        }
+                    )
+                    for lab in labels:
+                        detection_report["label_histogram"][lab] = (
+                            detection_report["label_histogram"].get(lab, 0) + 1
+                        )
                 if boxes is not None and len(boxes) > 0:
                     mask = _segment_with_sam2_boxes(frame, sam2_predictor, boxes)
                     if method == "none":
@@ -165,7 +204,7 @@ def extract_subject_masks_standalone(
         print("  [INFO] SAM2 不可用，主体分割跳过")
 
     ratios = [float(np.sum(m)) / (m.shape[0] * m.shape[1]) for m in masks]
-    return masks, ratios, method
+    return masks, ratios, method, detection_report
 
 
 def extract_tracking_trajectories_standalone(
@@ -543,9 +582,10 @@ def analyze_video(
     # 主体分割 + 可感知运动评分
     subject_detail: SubjectMotionDetail | None = None
     masks: list[np.ndarray] | None = None
+    subject_detection_report: dict | None = None
     if enable_subject:
         t0 = time.time()
-        masks, ratios, seg_method = extract_subject_masks_standalone(
+        masks, ratios, seg_method, subject_detection_report = extract_subject_masks_standalone(
             frames, device, offline=offline
         )
         t_seg = time.time() - t0
@@ -553,6 +593,14 @@ def analyze_video(
 
         if seg_method != "none":
             _, subject_detail = compute_subject_motion_score(flows, masks, ratios)
+        if subject_detection_report:
+            label_hist = subject_detection_report.get("label_histogram", {})
+            if label_hist:
+                top_items = sorted(label_hist.items(), key=lambda x: -x[1])[:5]
+                top_text = ", ".join(f"{k}:{v}" for k, v in top_items)
+                print(f"  主体标签Top: {top_text}")
+            max_area = float(subject_detection_report.get("max_box_area_ratio", 0.0))
+            print(f"  最大检测框面积占比: {max_area:.3f}")
 
     t0 = time.time()
     trajectories = extract_tracking_trajectories_standalone(
@@ -671,6 +719,7 @@ def analyze_video(
                     "subject_ratio_mean": float(subject_detail.subject_ratio_mean),
                 }
             ),
+            "subject_detection": subject_detection_report,
         }
         stats_path = out_dir / f"{name}_dynamics_stats.json"
         stats_path.write_text(
