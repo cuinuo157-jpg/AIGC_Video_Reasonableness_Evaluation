@@ -81,7 +81,16 @@ class MotionLogicAnalyzer:
             pass  # subject_masks 不可用，退回全局模式
 
         dynamics, detail = compute_dynamics_score(
-            flows, camera_magnitude, subject_motion=subject_detail,
+            flows,
+            camera_magnitude,
+            subject_motion=subject_detail,
+            flow_threshold_dynamic=getattr(self.config, "flow_threshold_dynamic", 5.0),
+            flow_threshold_static=getattr(self.config, "flow_threshold_static", 2.0),
+            flow_threshold_subject_min=getattr(self.config, "flow_threshold_subject_min", 2.0),
+            flow_subject_relief_factor=getattr(self.config, "flow_subject_relief_factor", 0.35),
+            coverage_motion_threshold=getattr(self.config, "coverage_motion_threshold", 0.5),
+            temporal_std_threshold=getattr(self.config, "temporal_std_threshold", 0.5),
+            camera_score_floor=getattr(self.config, "camera_score_floor", 0.25),
         )
         flow_smoothness = compute_flow_acceleration_smoothness(flows)
 

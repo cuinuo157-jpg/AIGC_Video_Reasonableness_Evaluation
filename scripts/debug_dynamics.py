@@ -513,6 +513,7 @@ def analyze_video(
     max_side: int = 512,
     save_track_video: bool = False,
     save_track_events: bool = False,
+    save_stats_json: bool = False,
 ) -> DynamicsDetail:
     name = Path(video_path).stem
     print(f"\n{'='*60}")
@@ -595,6 +596,13 @@ def analyze_video(
         print(f"  异常事件占比:   {traj_detail.abnormal_ratio:.4f}")
         print(f"  事件明细数:     {len(trajectory_events)}")
 
+    print(f"\n  ── 原始统计（标定用） ──")
+    print(f"  mean_mag_raw:     {detail.mean_magnitude_raw:.4f}")
+    print(f"  std_mag_raw:      {detail.std_magnitude_raw:.4f}")
+    print(f"  mean_coverage:    {detail.mean_coverage_raw:.4f}")
+    print(f"  mean_consistency: {detail.mean_consistency_raw:.4f}")
+    print(f"  camera_mag_raw:   {detail.camera_magnitude_raw:.4f}")
+
     # 额外统计
     mags = [float(np.mean(np.sqrt(fx**2 + fy**2))) for fx, fy in flows]
     print(f"\n  ── 光流统计 ──")
@@ -624,6 +632,52 @@ def analyze_video(
             save_video=save_track_video,
             save_events=save_track_events,
         )
+    else:
+        out_dir = ROOT / "outputs" / "dynamics"
+
+    if save_stats_json:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        stats_payload = {
+            "video": str(video_path),
+            "scene_type": detail.scene_type,
+            "dynamic_score": float(detail.unified_score),
+            "flow_magnitude_score": float(detail.flow_magnitude),
+            "spatial_coverage_score": float(detail.spatial_coverage),
+            "temporal_variation_score": float(detail.temporal_variation),
+            "spatial_consistency_score": float(detail.spatial_consistency),
+            "camera_factor_score": float(detail.camera_factor),
+            "subject_perceptual_score": (
+                None if detail.subject_perceptual is None else float(detail.subject_perceptual)
+            ),
+            "raw_stats": {
+                "mean_magnitude": float(detail.mean_magnitude_raw),
+                "std_magnitude": float(detail.std_magnitude_raw),
+                "mean_coverage": float(detail.mean_coverage_raw),
+                "mean_consistency": float(detail.mean_consistency_raw),
+                "camera_magnitude": float(detail.camera_magnitude_raw),
+            },
+            "trajectory": {
+                "score": float(traj_score),
+                "track_count": int(traj_detail.trajectory_count),
+                "valid_track_count": int(traj_detail.valid_trajectory_count),
+                "abnormal_event_count": int(traj_detail.abnormal_event_count),
+                "abnormal_ratio": float(traj_detail.abnormal_ratio),
+            },
+            "subject_motion": (
+                None if subject_detail is None else {
+                    "subject_magnitude": float(subject_detail.subject_magnitude),
+                    "background_magnitude": float(subject_detail.background_magnitude),
+                    "perceptual_score": float(subject_detail.perceptual_score),
+                    "subject_ratio_mean": float(subject_detail.subject_ratio_mean),
+                }
+            ),
+        }
+        stats_path = out_dir / f"{name}_dynamics_stats.json"
+        stats_path.write_text(
+            json.dumps(stats_payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        print(f"  统计JSON已保存: {stats_path}")
 
     return detail
 
@@ -649,6 +703,11 @@ def main() -> None:
         "--save-track-events",
         action="store_true",
         help="保存轨迹异常事件帧与 JSON 明细",
+    )
+    parser.add_argument(
+        "--save-stats-json",
+        action="store_true",
+        help="保存动态度分量与原始统计 JSON（用于阈值标定）",
     )
     parser.add_argument("--max-frames", type=int, default=60, help="最大帧数")
     parser.add_argument("--max-side", type=int, default=512, help="长边最大像素")
@@ -685,6 +744,7 @@ def main() -> None:
             max_frames=args.max_frames, max_side=args.max_side,
             save_track_video=args.save_track_video,
             save_track_events=args.save_track_events,
+            save_stats_json=args.save_stats_json,
         )
         results.append((v.name, detail))
 
