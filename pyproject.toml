@@ -29,6 +29,10 @@ dev = [
     "pytest>=7.4",
     "ruff>=0.4",
 ]
+# 阿里云百炼 DashScope（视频 VLM 评测脚本 eval_video_reasonableness_dashscope.py）
+dashscope = [
+    "dashscope>=1.19.0",
+]
 # 需要手动安装的第三方模型（不在 PyPI 上）
 # cotracker     → third_party/ 或 pip install git+...
 # groundingdino → third_party/ 或 pip install git+...

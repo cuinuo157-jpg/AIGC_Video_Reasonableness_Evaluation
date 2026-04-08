@@ -2,6 +2,7 @@
 
 import numpy as np
 from unittest.mock import MagicMock
+from types import SimpleNamespace
 
 from src.biological_anomaly.roi_utils import crop_hand_roi, crop_mouth_roi
 from src.biological_anomaly.mllm_bio_judge import judge_biological_anomaly_mllm
@@ -101,3 +102,26 @@ def test_mllm_judge_exception_handled():
         mllm_client=mock_mllm,
     )
     assert result["skipped"] is True
+
+
+def test_mllm_judge_dashscope_uses_video_path():
+    mock_mllm = MagicMock()
+    mock_mllm.config = SimpleNamespace(api_provider="dashscope")
+    mock_mllm.judge_video_path.return_value = {
+        "has_anomalies": False,
+        "anomalies": [],
+    }
+
+    hand_lm = np.random.rand(21, 3).astype(np.float32)
+    frame = np.zeros((120, 160, 3), dtype=np.uint8)
+
+    result = judge_biological_anomaly_mllm(
+        frames=[frame],
+        keypoints_seq=[{"left_hand": hand_lm, "right_hand": None, "face": None}],
+        suspicious_frames=[{"frame_idx": 0, "type": "hand_jitter", "hand": "left_hand"}],
+        mllm_client=mock_mllm,
+    )
+
+    assert result["skipped"] is False
+    mock_mllm.judge_video_path.assert_called_once()
+    mock_mllm.judge_video_clip.assert_not_called()

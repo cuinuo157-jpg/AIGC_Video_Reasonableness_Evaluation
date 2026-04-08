@@ -24,6 +24,7 @@ class MotionLogicResult:
     smoothness_score: float = 0.0
     naturalness_score: float | None = None
     naturalness_issues: list[str] = field(default_factory=list)
+    naturalness_mllm_result: dict[str, Any] | None = None
     subject_motion_detail: SubjectMotionDetail | None = None
     flow_smoothness_score: float = 0.0
     trajectory_curvature_score: float | None = None
@@ -120,6 +121,7 @@ class MotionLogicAnalyzer:
 
         naturalness = None
         issues: list[str] = []
+        naturalness_mllm_result: dict[str, Any] | None = None
 
         if self.config.enable_mllm and self._mllm_client:
             from .naturalness_judge import judge_naturalness_mllm
@@ -127,8 +129,14 @@ class MotionLogicAnalyzer:
             result = judge_naturalness_mllm(
                 hub, self._mllm_client, flows, smoothness
             )
+            naturalness_mllm_result = result
             if not result.get("skipped"):
-                naturalness = 1.0 if result.get("is_natural", True) else 0.3
+                is_natural = result.get("is_natural")
+                if is_natural is None:
+                    is_natural = result.get("is_reasonable")
+                if is_natural is None:
+                    is_natural = True
+                naturalness = 1.0 if is_natural else 0.3
                 issues = result.get("issues", [])
 
         c = self.config
@@ -151,6 +159,7 @@ class MotionLogicAnalyzer:
             smoothness_score=smoothness,
             naturalness_score=naturalness,
             naturalness_issues=issues,
+            naturalness_mllm_result=naturalness_mllm_result,
             subject_motion_detail=subject_detail,
             flow_smoothness_score=flow_smoothness,
             trajectory_curvature_score=trajectory_score,

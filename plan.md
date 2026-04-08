@@ -196,4 +196,3 @@
 
 - 详细设计：`docs/superpowers/specs/2026-03-10-six-dimension-evaluation-design.md`
 - 实施计划：`docs/superpowers/plans/2026-03-10-six-dimension-evaluation.md`
-

@@ -32,6 +32,13 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from src.evaluation_pipeline import EvaluationPipeline
+from src.feature_hub.hub import FeatureHub
+from src.feature_hub.extractors.subject_segmentation import SubjectSegmentationResult
+from src.mllm.client import MLLMClient
+from src.mllm.config import MLLMConfig
+from src.motion_logic.analyzer import MotionLogicAnalyzer
+from src.motion_logic.config import MotionLogicConfig
 from src.motion_logic.dynamics_scorer import compute_dynamics_score, DynamicsDetail
 from src.motion_logic.subject_motion_scorer import (
     compute_subject_motion_score,
@@ -41,6 +48,25 @@ from src.motion_logic.trajectory_curvature_scorer import (
     TrajectoryCurvatureDetail,
     compute_trajectory_curvature_smoothness,
 )
+
+
+def _load_repo_dotenv(repo_root: Path = ROOT) -> None:
+    """从仓库根 .env 注入环境变量（不覆盖已存在项）。"""
+    path = repo_root / ".env"
+    if not path.is_file():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        val = val.strip()
+        if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+            val = val[1:-1]
+        os.environ[key] = val
 
 
 # ── 光流提取 ─────────────────────────────────────────────────
@@ -731,11 +757,45 @@ def analyze_video(
     return detail
 
 
-def main() -> None:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="动态度检测调试脚本")
     parser.add_argument("--input", required=True, help="视频文件或目录")
     parser.add_argument("--device", default="cuda", help="推理设备")
     parser.add_argument("--method", default="raft", choices=["raft", "farneback"])
+    parser.add_argument(
+        "--analysis-mode",
+        default="dynamics",
+        choices=["dynamics", "motion", "pipeline"],
+        help="分析模式: dynamics(仅动态度), motion(MotionLogicAnalyzer), pipeline(EvaluationPipeline)",
+    )
+    parser.add_argument("--enable-mllm", action="store_true", help="启用 MLLM 辅助判定")
+    parser.add_argument(
+        "--mllm-provider",
+        default="dashscope",
+        choices=["openai", "anthropic", "dashscope"],
+        help="MLLM API 提供方",
+    )
+    parser.add_argument(
+        "--mllm-model",
+        default="qwen3-vl-8b-thinking",
+        help="MLLM 模型名",
+    )
+    parser.add_argument(
+        "--mllm-api-key",
+        default=os.environ.get("DASHSCOPE_API_KEY", ""),
+        help="MLLM API Key",
+    )
+    parser.add_argument(
+        "--mllm-base-url",
+        default=os.environ.get("DASHSCOPE_BASE_URL", ""),
+        help="MLLM API Base URL（可选）",
+    )
+    parser.add_argument(
+        "--mllm-fps",
+        type=int,
+        default=2,
+        help="DashScope 视频模式抽帧 fps（仅 dashscope provider 生效）",
+    )
     parser.add_argument("--subject", action="store_true", help="启用主体分割 (SAM2)")
     parser.add_argument(
         "--offline",
@@ -760,7 +820,118 @@ def main() -> None:
     )
     parser.add_argument("--max-frames", type=int, default=60, help="最大帧数")
     parser.add_argument("--max-side", type=int, default=512, help="长边最大像素")
-    args = parser.parse_args()
+    return parser.parse_args(argv)
+
+
+def build_mllm_client(args: argparse.Namespace) -> MLLMClient | None:
+    if not args.enable_mllm:
+        return None
+    api_key = (args.mllm_api_key or "").strip()
+    if not api_key:
+        raise ValueError("启用 --enable-mllm 时必须提供 --mllm-api-key 或设置 DASHSCOPE_API_KEY")
+    cfg = MLLMConfig(
+        backend="api",
+        api_provider=args.mllm_provider,
+        api_model=args.mllm_model,
+        api_key=api_key,
+        api_base_url=(args.mllm_base_url or "").strip() or None,
+        dashscope_video_fps=args.mllm_fps,
+    )
+    return MLLMClient(cfg)
+
+
+def run_motion_logic_analysis(
+    video_path: str,
+    args: argparse.Namespace,
+    mllm_client: MLLMClient | None,
+):
+    hub = _build_motion_hub(video_path, args)
+    analyzer = MotionLogicAnalyzer(
+        config=MotionLogicConfig(enable_mllm=args.enable_mllm),
+        mllm_client=mllm_client,
+    )
+    return analyzer.analyze(hub)
+
+
+def _build_motion_hub(video_path: str, args: argparse.Namespace) -> FeatureHub:
+    """为 motion 模式构建轻量 Hub，避免默认 extractor 全量慢路径。"""
+    frames_rgb, _ = load_video_rgb(
+        video_path,
+        max_frames=args.max_frames,
+        max_side=args.max_side,
+    )
+    if len(frames_rgb) < 2:
+        raise ValueError("视频有效帧不足 2，无法计算运动逻辑。")
+
+    flows = extract_flows(frames_rgb, args.device, args.method)
+    frames_bgr = [cv2.cvtColor(f, cv2.COLOR_RGB2BGR) for f in frames_rgb]
+
+    hub = FeatureHub(video_path, args.device)
+    if args.method == "raft":
+        hub.register_extractor("raft_flow", lambda _p, _d: flows)
+    else:
+        hub.register_extractor("optical_flow", lambda _p, _d: flows)
+    hub.register_extractor("video_frames", lambda _p, _d: frames_bgr)
+
+    if args.subject:
+        masks, ratios, method, _ = extract_subject_masks_standalone(
+            frames_rgb, args.device, offline=args.offline
+        )
+        seg_result = SubjectSegmentationResult(
+            masks=masks,
+            subject_ratios=ratios,
+            method=method,
+        )
+        hub.register_extractor("subject_masks", lambda _p, _d: seg_result)
+
+    return hub
+
+
+def run_pipeline_analysis(
+    video_path: str,
+    args: argparse.Namespace,
+    mllm_client: MLLMClient | None,
+):
+    pipeline = EvaluationPipeline(
+        device=args.device,
+        enable_mllm=args.enable_mllm,
+        mllm_client=mllm_client,
+    )
+    return pipeline.evaluate(video_path)
+
+
+def save_motion_result_json(
+    video_path: str,
+    result: Any,
+    out_root: Path | None = None,
+) -> Path:
+    out_dir = (out_root or (ROOT / "outputs" / "dynamics")).resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    name = Path(video_path).stem
+    out_path = out_dir / f"{name}_motion_result.json"
+    payload = {
+        "video_path": str(Path(video_path).resolve()),
+        "motion_logic_score": float(getattr(result, "motion_logic_score", 0.0)),
+        "dynamics_score": float(getattr(result, "dynamics_score", 0.0)),
+        "smoothness_score": float(getattr(result, "smoothness_score", 0.0)),
+        "naturalness_score": (
+            None
+            if getattr(result, "naturalness_score", None) is None
+            else float(getattr(result, "naturalness_score"))
+        ),
+        "naturalness_issues": list(getattr(result, "naturalness_issues", []) or []),
+        "mllm_result": getattr(result, "naturalness_mllm_result", None),
+    }
+    out_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return out_path
+
+
+def main() -> None:
+    _load_repo_dotenv()
+    args = parse_args()
 
     input_path = Path(args.input)
     if input_path.is_dir():
@@ -783,6 +954,30 @@ def main() -> None:
         os.environ["HF_HUB_OFFLINE"] = "1"
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
         print("离线模式: 启用（仅使用本地 .cache 资源）")
+
+    mllm_client = build_mllm_client(args)
+
+    if args.analysis_mode == "motion":
+        for v in videos:
+            print(f"\n[Motion] {v.name}")
+            r = run_motion_logic_analysis(str(v), args, mllm_client)
+            print(f"  motion_logic_score={r.motion_logic_score:.3f}")
+            print(f"  dynamics={r.dynamics_score:.3f}, smoothness={r.smoothness_score:.3f}")
+            if r.naturalness_score is not None:
+                print(f"  naturalness={r.naturalness_score:.3f}, issues={r.naturalness_issues}")
+            result_path = save_motion_result_json(str(v), r)
+            print(f"  结果JSON已保存: {result_path}")
+        return
+
+    if args.analysis_mode == "pipeline":
+        for v in videos:
+            print(f"\n[Pipeline] {v.name}")
+            report = run_pipeline_analysis(str(v), args, mllm_client)
+            print(f"  final_score={report.final_score:.3f}")
+            d = report.dimensions.get("motion_logic")
+            if d and d.details:
+                print(f"  motion_logic_score={getattr(d.details, 'motion_logic_score', 0.0):.3f}")
+        return
 
     results: list[tuple[str, DynamicsDetail]] = []
     for v in videos:

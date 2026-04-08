@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -49,9 +50,32 @@ from src.biological_anomaly.body_anomaly import (
     detect_body_angle_anomalies,
     detect_body_bone_anomalies,
 )
+from src.biological_anomaly.mllm_bio_judge import judge_biological_anomaly_mllm
+from src.biological_anomaly.analyzer import _collect_suspicious
+from src.mllm.client import MLLMClient
+from src.mllm.config import MLLMConfig
 
 
 # ── 1. 视频读取 ──────────────────────────────────────────
+
+
+def _load_repo_dotenv(repo_root: Path = ROOT) -> None:
+    """从仓库根 .env 注入环境变量（不覆盖已存在项）。"""
+    path = repo_root / ".env"
+    if not path.is_file():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        val = val.strip()
+        if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+            val = val[1:-1]
+        os.environ[key] = val
 
 
 def load_frames(video_path: str, sample_rate: int = 1) -> tuple[list[np.ndarray], float]:
@@ -357,14 +381,18 @@ def run_level2(keypoints_seq: list[dict], fps: float, frames: list[np.ndarray] |
 # ── 4. 综合评分 ───────────────────────────────────────────
 
 
-def compute_score(l1: dict, l2: dict, config: BiologicalAnomalyConfig, n_frames: int) -> dict:
+def compute_score(
+    l1: dict,
+    l2: dict,
+    config: BiologicalAnomalyConfig,
+    n_frames: int,
+    l3_score: float = 1.0,
+) -> dict:
     """计算各级和综合得分。"""
     from src.biological_anomaly.analyzer import _score_from_anomalies
 
     l1_score = _score_from_anomalies(l1["all"], n_frames)
     l2_score = _score_from_anomalies(l2["all"], n_frames)
-    l3_score = 1.0  # MLLM 未启用时为满分
-
     bio_score = (
         config.level1_weight * l1_score
         + config.level2_weight * l2_score
@@ -377,6 +405,58 @@ def compute_score(l1: dict, l2: dict, config: BiologicalAnomalyConfig, n_frames:
         "level2_score": round(l2_score, 4),
         "level3_score": round(l3_score, 4),
         "bio_quality_score": round(bio_score, 4),
+    }
+
+
+def build_mllm_client(args: argparse.Namespace, enable_mllm: bool) -> MLLMClient | None:
+    if not enable_mllm:
+        return None
+    api_key = (args.mllm_api_key or "").strip()
+    if not api_key:
+        raise ValueError("启用 MLLM 时必须提供 API Key（.env 的 DASHSCOPE_API_KEY 或 --mllm-api-key）")
+    cfg = MLLMConfig(
+        backend="api",
+        api_provider=args.mllm_provider,
+        api_model=args.mllm_model,
+        api_key=api_key,
+        api_base_url=(args.mllm_base_url or "").strip() or None,
+        dashscope_video_fps=args.mllm_fps,
+    )
+    return MLLMClient(cfg)
+
+
+def run_level3(
+    frames: list[np.ndarray],
+    keypoints_seq: list[dict],
+    l1: dict,
+    l2: dict,
+    config: BiologicalAnomalyConfig,
+    mllm_client: MLLMClient | None,
+) -> dict:
+    if not config.enable_mllm or mllm_client is None:
+        return {"skipped": True, "anomalies": [], "level3_score": 1.0}
+
+    suspicious = _collect_suspicious(l1["all"] + l2["all"])
+    if not suspicious:
+        return {"skipped": True, "anomalies": [], "level3_score": 1.0}
+
+    result = judge_biological_anomaly_mllm(
+        frames,
+        keypoints_seq,
+        suspicious,
+        mllm_client,
+        max_crops=config.mllm_max_crops,
+    )
+    if result.get("skipped"):
+        return {"skipped": True, "anomalies": [], "level3_score": 1.0}
+
+    anomalies = result.get("anomalies", [])
+    level3_score = 0.3 if result.get("has_anomalies") else 1.0
+    return {
+        "skipped": False,
+        "anomalies": anomalies,
+        "level3_score": level3_score,
+        "raw_result": result,
     }
 
 
@@ -712,12 +792,32 @@ def save_visualization(
 
 
 def main():
+    _load_repo_dotenv()
     parser = argparse.ArgumentParser(description="生物特征异常三级检测调试脚本")
     parser.add_argument("--input", required=True, help="视频文件路径")
     parser.add_argument("--device", default="cpu", help="推理设备 (cuda/cpu)")
     parser.add_argument("--sample-rate", type=int, default=1, help="每 N 帧采样 1 帧")
     parser.add_argument("--save-vis", action="store_true", help="保存可视化到 outputs/bio_anomaly/")
     parser.add_argument("--no-mllm", action="store_true", help="禁用 Level 3 MLLM")
+    parser.add_argument(
+        "--mllm-provider",
+        default="dashscope",
+        choices=["openai", "anthropic", "dashscope"],
+        help="MLLM API 提供方",
+    )
+    parser.add_argument("--mllm-model", default="qwen3-vl-8b-thinking", help="MLLM 模型名")
+    parser.add_argument(
+        "--mllm-api-key",
+        default=os.environ.get("DASHSCOPE_API_KEY", ""),
+        help="MLLM API Key（默认读取 DASHSCOPE_API_KEY）",
+    )
+    parser.add_argument(
+        "--mllm-base-url",
+        default=os.environ.get("DASHSCOPE_BASE_URL", ""),
+        help="MLLM API Base URL（可选）",
+    )
+    parser.add_argument("--mllm-fps", type=int, default=2, help="DashScope 视频模式 fps")
+    parser.add_argument("--mllm-max-crops", type=int, default=8, help="Level 3 最大 ROI 裁剪数")
     args = parser.parse_args()
 
     video_path = args.input
@@ -725,7 +825,11 @@ def main():
         print(f"错误: 视频文件不存在 {video_path}")
         sys.exit(1)
 
-    config = BiologicalAnomalyConfig(enable_mllm=not args.no_mllm)
+    config = BiologicalAnomalyConfig(
+        enable_mllm=not args.no_mllm,
+        mllm_max_crops=args.mllm_max_crops,
+    )
+    mllm_client = build_mllm_client(args, config.enable_mllm)
 
     print(f"{'='*60}")
     print(f"生物特征异常检测 (Biological Anomaly Detection)")
@@ -750,12 +854,16 @@ def main():
     # Step 4: Level 2 结构检测
     l2 = run_level2(keypoints_seq, fps, frames=frames)
 
+    # Step 4.7: Level 3 MLLM 语义兜底
+    l3 = run_level3(frames, keypoints_seq, l1, l2, config, mllm_client)
+    print(f"\n  [Level3-MLLM] 异常: {len(l3['anomalies'])} 处")
+
     # Step 4.5: 按部位正常帧比例 (VMBench OIS 风格)
     body_seq = [kp.get("body") for kp in keypoints_seq]
     part_scores = compute_body_part_scores(body_seq, smoothing_window=config.smoothing_window)
 
     # Step 5: 综合评分
-    scores = compute_score(l1, l2, config, len(frames))
+    scores = compute_score(l1, l2, config, len(frames), l3_score=l3["level3_score"])
 
     print(f"\n{'='*60}")
     print(f"综合评分")
@@ -789,14 +897,15 @@ def main():
             print(f"  {part:25s} [{bar}] {score:.2%}")
 
     # 异常摘要
-    all_anomalies = l1["all"] + l2["all"]
+    all_anomalies = l1["all"] + l2["all"] + l3["anomalies"]
     if all_anomalies:
         print(f"\n{'='*60}")
         print(f"异常摘要 (共 {len(all_anomalies)} 处)")
         print(f"{'='*60}")
         by_type: dict[str, int] = {}
         for a in all_anomalies:
-            by_type[a["type"]] = by_type.get(a["type"], 0) + 1
+            t = a.get("type", "mllm_anomaly")
+            by_type[t] = by_type.get(t, 0) + 1
         for t, c in sorted(by_type.items(), key=lambda x: -x[1]):
             print(f"  {t}: {c} 处")
 
@@ -818,6 +927,9 @@ def main():
         else {},
         "l1_count": len(l1["all"]),
         "l2_count": len(l2["all"]),
+        "l3_count": len(l3["anomalies"]),
+        "l3_skipped": bool(l3.get("skipped", False)),
+        "l3_raw_result": l3.get("raw_result", {}),
     }
     with open(result_path, "w", encoding="utf-8") as f:
         json.dump(result_json, f, ensure_ascii=False, indent=2)

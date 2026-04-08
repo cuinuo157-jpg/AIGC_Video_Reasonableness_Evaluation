@@ -1,0 +1,14 @@
+{
+  "video_path": "D:\\workspace\\projects\\activate\\AIGC_Video_Reasonableness_Evaluation\\data\\videos\\6706926-hd_1920_1080_25fps.mp4",
+  "motion_logic_score": 0.634823751427612,
+  "dynamics_score": 0.9059892823542229,
+  "smoothness_score": 0.15756741680336273,
+  "naturalness_score": 1.0,
+  "naturalness_issues": [],
+  "mllm_result": {
+    "is_natural": true,
+    "confidence": 0.95,
+    "issues": [],
+    "severity": "none"
+  }
+}
