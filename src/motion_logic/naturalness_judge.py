@@ -10,9 +10,13 @@ def judge_naturalness_mllm(
     mllm_client: Any,
     flows: list[tuple[np.ndarray, np.ndarray]],
     smoothness_score: float,
+    smoothness_threshold: float = 0.8,
 ) -> dict:
-    if smoothness_score > 0.8:
-        return {"skipped": True, "reason": "smoothness above threshold"}
+    if smoothness_score > smoothness_threshold:
+        return {
+            "skipped": True,
+            "reason": f"smoothness {smoothness_score:.3f} above threshold {smoothness_threshold:.2f}",
+        }
     from src.mllm.prompts import MOTION_NATURALNESS_PROMPT
 
     provider = getattr(getattr(mllm_client, "config", None), "api_provider", "")

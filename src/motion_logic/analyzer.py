@@ -127,7 +127,13 @@ class MotionLogicAnalyzer:
             from .naturalness_judge import judge_naturalness_mllm
 
             result = judge_naturalness_mllm(
-                hub, self._mllm_client, flows, smoothness
+                hub,
+                self._mllm_client,
+                flows,
+                smoothness,
+                smoothness_threshold=getattr(
+                    self.config, "naturalness_smoothness_threshold", 0.8
+                ),
             )
             naturalness_mllm_result = result
             if not result.get("skipped"):

@@ -7,6 +7,8 @@ class MotionLogicConfig:
     smoothness_weight: float = 0.4
     naturalness_weight: float = 0.3
     enable_mllm: bool = True
+    # smoothness_score 低于此阈值时才调用 MLLM（正式评估默认 0.8；调试时可设 1.0 强制触发）
+    naturalness_smoothness_threshold: float = 0.8
     smoothness_acceleration_weight: float = 0.5
     smoothness_trajectory_weight: float = 0.5
     # Deprecated alias for backward compatibility with old configs.

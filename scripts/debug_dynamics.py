@@ -1,21 +1,31 @@
 """
 动态度 (Dynamics) 单模块调试脚本
 
+分析模式 (--analysis-mode):
+    dynamics  【默认】纯数值：光流幅度/轨迹曲率/动态度评分，无 MLLM
+    motion    MotionLogicAnalyzer：dynamics + smoothness + MLLM 运动自然度判定
+              需要 --enable-mllm；调试时建议加 --mllm-smoothness-threshold 1.0
+              （默认值），正式评估改为 0.8 只对平滑度差的视频调用 MLLM
+    pipeline  全维度 EvaluationPipeline，输出 final_score
+
 用法:
     python scripts/debug_dynamics.py --input <视频路径>
-    python scripts/debug_dynamics.py --input <视频路径> --device cpu
-    python scripts/debug_dynamics.py --input <视频路径> --method farneback
-    python scripts/debug_dynamics.py --input <视频路径> --subject   # 启用主体分割
+    python scripts/debug_dynamics.py --input <视频路径> --analysis-mode motion --enable-mllm
+    python scripts/debug_dynamics.py --input <视频路径> --analysis-mode motion --enable-mllm \\
+        --mllm-smoothness-threshold 1.0   # 强制调用 MLLM（调试）
     python scripts/debug_dynamics.py --input data/videos/ --device cuda   # 批量
 
 参数:
-    --input        视频文件或目录路径
-    --device       推理设备 (cuda / cpu)，默认 cuda
-    --method       光流方法 (raft / farneback)，默认 raft
-    --subject      启用主体分割 (SAM2/Grounding DINO)
-    --save-vis     保存光流可视化到 outputs/dynamics/
-    --max-frames   最大帧数（超出则均匀采样），默认 60
-    --max-side     长边最大像素（RAFT 推荐 ≤ 512），默认 512
+    --input                      视频文件或目录路径
+    --device                     推理设备 (cuda / cpu)，默认 cuda
+    --method                     光流方法 (raft / farneback)，默认 raft
+    --analysis-mode              分析模式 (dynamics / motion / pipeline)
+    --enable-mllm                启用 MLLM（仅 motion / pipeline 模式有效）
+    --mllm-smoothness-threshold  平滑度阈值，低于此值才调 MLLM（默认 1.0 = 总是调）
+    --subject                    启用主体分割 (SAM2/Grounding DINO)
+    --save-vis                   保存光流可视化到 outputs/dynamics/
+    --max-frames                 最大帧数（超出则均匀采样），默认 60
+    --max-side                   长边最大像素（RAFT 推荐 ≤ 512），默认 512
 """
 from __future__ import annotations
 
@@ -799,6 +809,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=2,
         help="视频路径模式抽帧 fps（dashscope / vllm 的 judge_video_path 均使用）",
     )
+    parser.add_argument(
+        "--mllm-smoothness-threshold",
+        type=float,
+        default=1.0,
+        help=(
+            "平滑度低于此值才调用 MLLM（默认 1.0 = 调试时始终调用；"
+            "正式评估建议 0.8）"
+        ),
+    )
     parser.add_argument("--subject", action="store_true", help="启用主体分割 (SAM2)")
     parser.add_argument(
         "--offline",
@@ -904,7 +923,12 @@ def run_motion_logic_analysis(
 ):
     hub = _build_motion_hub(video_path, args)
     analyzer = MotionLogicAnalyzer(
-        config=MotionLogicConfig(enable_mllm=args.enable_mllm),
+        config=MotionLogicConfig(
+            enable_mllm=args.enable_mllm,
+            naturalness_smoothness_threshold=getattr(
+                args, "mllm_smoothness_threshold", 1.0
+            ),
+        ),
         mllm_client=mllm_client,
     )
     return analyzer.analyze(hub)
