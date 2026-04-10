@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 from pathlib import Path
 import re
 from typing import Any
@@ -10,6 +11,7 @@ import cv2
 import numpy as np
 
 from .config import MLLMConfig
+from .dashscope_video_reasonableness import parse_json_from_model_text
 
 
 class MLLMClient:
@@ -43,14 +45,21 @@ class MLLMClient:
             raise ValueError(
                 "DashScope 视频模型需要视频路径输入，请使用 judge_video_path(video_path, prompt, fps=2)。"
             )
+        elif self.config.api_provider == "vllm":
+            return self._call_vllm_openai(images_b64, prompt)
         raise ValueError(f"Unknown provider: {self.config.api_provider}")
 
     def judge_video_path(self, video_path: str, prompt: str, *, fps: int | None = None) -> dict:
-        """按 DashScope 视频接口（video + fps）评估视频。"""
-        if self.config.api_provider != "dashscope":
-            raise ValueError("judge_video_path 仅适用于 api_provider='dashscope'")
-        fps = self.config.dashscope_video_fps if fps is None else fps
-        return self._call_dashscope_video(video_path=video_path, prompt=prompt, fps=fps)
+        """DashScope：原生 video + fps；vllm：本地抽帧 + OpenAI 兼容 chat。"""
+        if self.config.api_provider == "dashscope":
+            f = self.config.dashscope_video_fps if fps is None else fps
+            return self._call_dashscope_video(video_path=video_path, prompt=prompt, fps=f)
+        if self.config.api_provider == "vllm":
+            f = self.config.dashscope_video_fps if fps is None else fps
+            return self._call_vllm_from_video_path(video_path, prompt, f)
+        raise ValueError(
+            "judge_video_path 仅适用于 api_provider='dashscope' 或 'vllm'"
+        )
 
     def _call_local(self, frames: list[np.ndarray], prompt: str) -> dict:
         if self.config.local_model == "Qwen-VL":
@@ -63,9 +72,15 @@ class MLLMClient:
             "Qwen-VL 本地模型尚未部署。请使用 backend='api' 或 backend='hybrid' 回退到 API。"
         )
 
+    def _max_frames_for_encode(self) -> int:
+        if self.config.api_provider == "vllm":
+            return self.config.vllm_max_frames
+        return self.config.max_frames
+
     def _encode_frames(self, frames: list[np.ndarray]) -> list[str]:
-        step = max(1, len(frames) // self.config.max_frames)
-        sampled = frames[::step][: self.config.max_frames]
+        cap = self._max_frames_for_encode()
+        step = max(1, len(frames) // cap)
+        sampled = frames[::step][:cap]
         encoded = []
         for f in sampled:
             _, buf = cv2.imencode(".jpg", f, [cv2.IMWRITE_JPEG_QUALITY, 85])
@@ -117,6 +132,62 @@ class MLLMClient:
             messages=[{"role": "user", "content": content}],
         )
         return json.loads(resp.content[0].text)
+
+    def _resolve_vllm_base_url(self) -> str:
+        if self.config.api_base_url and self.config.api_base_url.strip():
+            return self.config.api_base_url.strip().rstrip("/")
+        return os.environ.get("VLLM_OPENAI_BASE_URL", "http://localhost:8201/v1").rstrip(
+            "/"
+        )
+
+    def _resolve_vllm_api_key(self) -> str:
+        if self.config.api_key and str(self.config.api_key).strip():
+            return str(self.config.api_key).strip()
+        return os.environ.get("VLLM_API_KEY", "not-needed")
+
+    def _call_vllm_openai(self, images_b64: list[str], prompt: str) -> dict:
+        from .vllm_openai_video import (
+            build_user_content_image_then_text,
+            chat_completions_text,
+        )
+
+        content = build_user_content_image_then_text(images_b64, prompt)
+        text = chat_completions_text(
+            base_url=self._resolve_vllm_base_url(),
+            api_key=self._resolve_vllm_api_key(),
+            model=self.config.api_model,
+            user_content=content,
+            temperature=self.config.temperature,
+            timeout=float(self.config.vllm_timeout),
+        )
+        return parse_json_from_model_text(text)
+
+    def _call_vllm_from_video_path(
+        self, video_path: str, prompt: str, sample_fps: int
+    ) -> dict:
+        from .vllm_openai_video import (
+            extract_frames_jpeg_bytes,
+            subsample_uniform,
+            frames_bytes_to_base64,
+            build_user_content_image_then_text,
+            chat_completions_text,
+        )
+
+        raw = extract_frames_jpeg_bytes(video_path, sample_fps)
+        raw = subsample_uniform(raw, self.config.vllm_max_frames)
+        if not raw:
+            raise ValueError(f"未从视频抽到任何帧: {video_path}")
+        b64 = frames_bytes_to_base64(raw)
+        content = build_user_content_image_then_text(b64, prompt)
+        text = chat_completions_text(
+            base_url=self._resolve_vllm_base_url(),
+            api_key=self._resolve_vllm_api_key(),
+            model=self.config.api_model,
+            user_content=content,
+            temperature=self.config.temperature,
+            timeout=float(self.config.vllm_timeout),
+        )
+        return parse_json_from_model_text(text)
 
     def _ensure_dashscope(self) -> tuple[Any, Any]:
         try:
@@ -189,4 +260,4 @@ class MLLMClient:
 
         if not text:
             raise ValueError("DashScope 响应中未提取到文本内容")
-        return json.loads(text)
+        return parse_json_from_model_text(text)

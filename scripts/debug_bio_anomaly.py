@@ -12,6 +12,9 @@
     --sample-rate  每 N 帧采样一帧，默认 1（全帧）
     --save-vis     保存可视化结果到 outputs/bio_anomaly/
     --no-mllm      禁用 Level 3 MLLM 判定
+
+Level 3 MLLM 默认 vllm（与 debug_dynamics / test_qwen_35_video 一致）。
+环境变量: VLLM_OPENAI_BASE_URL、VLLM_API_KEY；dashscope 时需 DASHSCOPE_API_KEY。
 """
 
 from __future__ import annotations
@@ -412,13 +415,15 @@ def build_mllm_client(args: argparse.Namespace, enable_mllm: bool) -> MLLMClient
     if not enable_mllm:
         return None
     api_key = (args.mllm_api_key or "").strip()
-    if not api_key:
-        raise ValueError("启用 MLLM 时必须提供 API Key（.env 的 DASHSCOPE_API_KEY 或 --mllm-api-key）")
+    if args.mllm_provider != "vllm" and not api_key:
+        raise ValueError(
+            "启用 MLLM 且非 vllm 时必须提供 API Key（DASHSCOPE_API_KEY 或 --mllm-api-key）"
+        )
     cfg = MLLMConfig(
         backend="api",
         api_provider=args.mllm_provider,
         api_model=args.mllm_model,
-        api_key=api_key,
+        api_key=api_key or None,
         api_base_url=(args.mllm_base_url or "").strip() or None,
         dashscope_video_fps=args.mllm_fps,
     )
@@ -801,22 +806,33 @@ def main():
     parser.add_argument("--no-mllm", action="store_true", help="禁用 Level 3 MLLM")
     parser.add_argument(
         "--mllm-provider",
-        default="dashscope",
-        choices=["openai", "anthropic", "dashscope"],
-        help="MLLM API 提供方",
+        default="vllm",
+        choices=["vllm", "openai", "anthropic", "dashscope"],
+        help="MLLM API 提供方（默认 vllm：OpenAI 兼容本地服务）",
     )
-    parser.add_argument("--mllm-model", default="qwen3-vl-8b-thinking", help="MLLM 模型名")
+    parser.add_argument(
+        "--mllm-model",
+        default="qwen3.5:9b",
+        help="MLLM 模型名（dashscope 可传 qwen3-vl-8b-thinking 等）",
+    )
     parser.add_argument(
         "--mllm-api-key",
-        default=os.environ.get("DASHSCOPE_API_KEY", ""),
-        help="MLLM API Key（默认读取 DASHSCOPE_API_KEY）",
+        default=os.environ.get("DASHSCOPE_API_KEY", "")
+        or os.environ.get("VLLM_API_KEY", ""),
+        help="API Key（dashscope 必填；vllm 可空）",
     )
     parser.add_argument(
         "--mllm-base-url",
-        default=os.environ.get("DASHSCOPE_BASE_URL", ""),
-        help="MLLM API Base URL（可选）",
+        default=os.environ.get("DASHSCOPE_BASE_URL", "")
+        or os.environ.get("VLLM_OPENAI_BASE_URL", ""),
+        help="Base URL（vllm 默认代码内 localhost:8201/v1；dashscope 可设国际区）",
     )
-    parser.add_argument("--mllm-fps", type=int, default=2, help="DashScope 视频模式 fps")
+    parser.add_argument(
+        "--mllm-fps",
+        type=int,
+        default=2,
+        help="视频路径模式抽帧 fps（dashscope / vllm）",
+    )
     parser.add_argument("--mllm-max-crops", type=int, default=8, help="Level 3 最大 ROI 裁剪数")
     args = parser.parse_args()
 

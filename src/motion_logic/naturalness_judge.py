@@ -16,7 +16,7 @@ def judge_naturalness_mllm(
     from src.mllm.prompts import MOTION_NATURALNESS_PROMPT
 
     provider = getattr(getattr(mllm_client, "config", None), "api_provider", "")
-    if provider == "dashscope" and hasattr(mllm_client, "judge_video_path"):
+    if provider in ("dashscope", "vllm") and hasattr(mllm_client, "judge_video_path"):
         video_path = getattr(hub, "video_path", None)
         if video_path:
             return mllm_client.judge_video_path(video_path, MOTION_NATURALNESS_PROMPT)
