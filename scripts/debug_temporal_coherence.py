@@ -97,6 +97,58 @@ def _load_repo_dotenv() -> None:
         os.environ[key] = val
 
 
+def _preview_and_save_mllm_frames(
+    video_path: str,
+    sample_fps: int,
+    max_frames: int,
+    save_dir: Path,
+    label: str = "mllm",
+) -> dict:
+    """抽取将发送给 VLLM 的帧，打印抽帧统计，并将帧保存到磁盘。"""
+    from src.mllm.vllm_openai_video import extract_frames_jpeg_bytes, subsample_uniform
+
+    cap = cv2.VideoCapture(video_path)
+    video_fps = float(cap.get(cv2.CAP_PROP_FPS) or 25.0)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    cap.release()
+
+    duration_sec = total_frames / video_fps if video_fps > 0 else 0
+    frame_interval = max(1, int(video_fps / sample_fps))
+
+    raw = extract_frames_jpeg_bytes(video_path, sample_fps)
+    sampled = subsample_uniform(raw, max_frames)
+
+    summary = {
+        "video_fps": round(video_fps, 2),
+        "video_resolution": f"{width}x{height}",
+        "video_total_frames": total_frames,
+        "video_duration_sec": round(duration_sec, 2),
+        "sample_fps": sample_fps,
+        "frame_interval": frame_interval,
+        "after_fps_sampling": len(raw),
+        "after_subsample": len(sampled),
+        "max_frames_limit": max_frames,
+    }
+
+    print(f"\n{'='*60}")
+    print(f"[抽帧情况: {label}]")
+    print(f"{'='*60}")
+    print(f"  视频: {video_path}")
+    print(f"  原始: {width}x{height}, fps={video_fps:.1f}, 总帧={total_frames}, 时长={duration_sec:.1f}s")
+    print(f"  step=max(1,int({video_fps:.1f}/{sample_fps}))={frame_interval}, 按 {sample_fps}fps 抽取 → {len(raw)} 帧")
+    print(f"  subsample_uniform(max={max_frames}) → 最终送入 VLLM: {len(sampled)} 帧")
+
+    save_dir.mkdir(parents=True, exist_ok=True)
+    for i, frame_bytes in enumerate(sampled):
+        out_path = save_dir / f"frame_{i+1:02d}_of_{len(sampled)}.jpg"
+        out_path.write_bytes(frame_bytes)
+    print(f"  已保存 {len(sampled)} 张帧到: {save_dir}")
+
+    return summary
+
+
 def build_mllm_client(args: argparse.Namespace) -> MLLMClient | None:
     if not args.enable_mllm:
         return None
@@ -266,9 +318,19 @@ def run_one(
     save_det_vis: bool = False,
     mllm_client: MLLMClient | None = None,
     vlm_mode: str = "confirm",  # "confirm" | "direct"
+    mllm_fps: int = 2,
 ) -> Path:
     t0 = time.time()
     hub = create_default_hub(str(video_path), device=device)
+
+    if mllm_client is not None:
+        _preview_and_save_mllm_frames(
+            video_path=str(video_path),
+            sample_fps=mllm_fps,
+            max_frames=5,
+            save_dir=output_dir / f"{video_path.stem}_mllm_frames",
+            label="D6 时序连贯性 VLM",
+        )
 
     vlm_result = None
 
@@ -424,6 +486,7 @@ def main() -> None:
         save_det_vis=args.save_det_vis,
         mllm_client=mllm_client,
         vlm_mode=args.vlm_mode,
+        mllm_fps=args.mllm_fps,
     )
     print(f"\n总耗时: {time.time() - t_total:.1f}s")
 

@@ -34,6 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from src.biological_anomaly.config import BiologicalAnomalyConfig
+from src.biological_anomaly.roi_utils import extract_suspicious_rois
 from src.biological_anomaly.eye_anomaly import (
     detect_eye_anomalies,
     detect_eye_symmetry_anomalies,
@@ -58,6 +59,73 @@ from src.biological_anomaly.analyzer import _collect_suspicious
 from src.biological_anomaly.prompts import BIOLOGICAL_ANOMALY_PROMPT
 from src.mllm.client import MLLMClient
 from src.mllm.config import MLLMConfig
+
+
+# ── 0. MLLM 抽帧预览辅助 ─────────────────────────────────
+
+
+def _preview_and_save_roi_crops(
+    frames: list[np.ndarray],
+    keypoints_seq: list[dict],
+    l1: dict,
+    l2: dict,
+    config: "BiologicalAnomalyConfig",
+    save_dir: Path,
+) -> dict:
+    """预览并保存 Level 3 MLLM 实际接收的 ROI 裁剪帧，打印抽帧路径说明。
+
+    Bio Level 3 的送模型链路:
+      1. extract_suspicious_rois() → max_crops 张 ROI 裁剪（numpy BGR）
+      2. 写入临时 MP4 (temp_fps=6)
+      3. extract_frames_jpeg_bytes(tmp_mp4, extract_fps=2) → frame_interval=max(1,int(6/2))=3
+      4. subsample_uniform(vllm_max_frames=5) → 最终送入 VLLM 的帧数
+    """
+    temp_fps = 6
+    extract_fps = 2
+    vllm_max_frames = 5
+
+    suspicious = _collect_suspicious(l1["all"] + l2["all"])
+    rois = extract_suspicious_rois(
+        frames, keypoints_seq, suspicious, max_crops=config.mllm_max_crops
+    )
+    crop_frames = [roi["crop"] for roi in rois]
+
+    frame_interval = max(1, int(temp_fps / extract_fps))  # = 3
+    frames_after_fps = sum(1 for i in range(len(crop_frames)) if i % frame_interval == 0)
+    frames_sent = min(frames_after_fps, vllm_max_frames)
+
+    summary = {
+        "suspicious_frames": len(suspicious),
+        "roi_crops_extracted": len(crop_frames),
+        "temp_video_fps": temp_fps,
+        "extract_fps": extract_fps,
+        "frame_interval": frame_interval,
+        "after_fps_extract": frames_after_fps,
+        "vllm_max_frames": vllm_max_frames,
+        "frames_sent_to_vllm": frames_sent,
+    }
+
+    print(f"\n{'='*60}")
+    print(f"[抽帧情况: Bio Level 3 MLLM ROI 裁剪]")
+    print(f"{'='*60}")
+    print(f"  可疑帧数(suspicious): {len(suspicious)}")
+    print(f"  extract_suspicious_rois → {len(crop_frames)} 张 ROI 裁剪（max_crops={config.mllm_max_crops}）")
+    print(f"  写入临时 MP4 (fps={temp_fps}，共 {len(crop_frames)} 帧，时长≈{len(crop_frames)/temp_fps:.2f}s)")
+    print(f"  extract_frames_jpeg_bytes(fps={extract_fps}): frame_interval={frame_interval}, 抽取 → {frames_after_fps} 帧")
+    print(f"  subsample_uniform(max={vllm_max_frames}) → 最终送入 VLLM: {frames_sent} 帧")
+
+    save_dir.mkdir(parents=True, exist_ok=True)
+    for i, (roi, crop) in enumerate(zip(rois, crop_frames)):
+        region_type = roi.get("region_type", "unknown")
+        fidx = roi.get("frame_idx", i)
+        anomaly_type = roi.get("anomaly_info", {}).get("type", "unknown")
+        # 文件名含序号/区域类型/原始帧号/异常类型，便于对照
+        safe_type = anomaly_type.replace("/", "_")
+        out_path = save_dir / f"roi_{i+1:02d}_{region_type}_f{fidx:04d}_{safe_type}.jpg"
+        cv2.imwrite(str(out_path), crop)
+    print(f"  已保存 {len(crop_frames)} 张 ROI 裁剪到: {save_dir}")
+
+    return summary
 
 
 # ── 1. 视频读取 ──────────────────────────────────────────
@@ -875,6 +943,17 @@ def main():
     # Step 4.7: Level 3 MLLM 语义兜底
     l3 = run_level3(frames, keypoints_seq, l1, l2, config, mllm_client)
     print(f"\n  [Level3-MLLM] 异常: {len(l3['anomalies'])} 处")
+
+    if config.enable_mllm and mllm_client is not None:
+        stem = Path(video_path).stem
+        _preview_and_save_roi_crops(
+            frames=frames,
+            keypoints_seq=keypoints_seq,
+            l1=l1,
+            l2=l2,
+            config=config,
+            save_dir=ROOT / "outputs" / "bio_anomaly" / f"{stem}_mllm_frames",
+        )
     if not l3.get("skipped") and l3.get("raw_result"):
         mllm_raw = l3["raw_result"]
         mllm_out = ROOT / "outputs" / "bio_anomaly"

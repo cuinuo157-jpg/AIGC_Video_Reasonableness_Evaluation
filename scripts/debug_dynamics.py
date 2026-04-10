@@ -826,6 +826,58 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _preview_and_save_mllm_frames(
+    video_path: str,
+    sample_fps: int,
+    max_frames: int,
+    save_dir: Path,
+    label: str = "mllm",
+) -> dict:
+    """抽取将发送给 VLLM 的帧，打印抽帧统计，并将帧保存到磁盘。"""
+    from src.mllm.vllm_openai_video import extract_frames_jpeg_bytes, subsample_uniform
+
+    cap = cv2.VideoCapture(video_path)
+    video_fps = float(cap.get(cv2.CAP_PROP_FPS) or 25.0)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    cap.release()
+
+    duration_sec = total_frames / video_fps if video_fps > 0 else 0
+    frame_interval = max(1, int(video_fps / sample_fps))
+
+    raw = extract_frames_jpeg_bytes(video_path, sample_fps)
+    sampled = subsample_uniform(raw, max_frames)
+
+    summary = {
+        "video_fps": round(video_fps, 2),
+        "video_resolution": f"{width}x{height}",
+        "video_total_frames": total_frames,
+        "video_duration_sec": round(duration_sec, 2),
+        "sample_fps": sample_fps,
+        "frame_interval": frame_interval,
+        "after_fps_sampling": len(raw),
+        "after_subsample": len(sampled),
+        "max_frames_limit": max_frames,
+    }
+
+    print(f"\n{'='*60}")
+    print(f"[抽帧情况: {label}]")
+    print(f"{'='*60}")
+    print(f"  视频: {video_path}")
+    print(f"  原始: {width}x{height}, fps={video_fps:.1f}, 总帧={total_frames}, 时长={duration_sec:.1f}s")
+    print(f"  step=max(1,int({video_fps:.1f}/{sample_fps}))={frame_interval}, 按 {sample_fps}fps 抽取 → {len(raw)} 帧")
+    print(f"  subsample_uniform(max={max_frames}) → 最终送入 VLLM: {len(sampled)} 帧")
+
+    save_dir.mkdir(parents=True, exist_ok=True)
+    for i, frame_bytes in enumerate(sampled):
+        out_path = save_dir / f"frame_{i+1:02d}_of_{len(sampled)}.jpg"
+        out_path.write_bytes(frame_bytes)
+    print(f"  已保存 {len(sampled)} 张帧到: {save_dir}")
+
+    return summary
+
+
 def build_mllm_client(args: argparse.Namespace) -> MLLMClient | None:
     if not args.enable_mllm:
         return None
@@ -966,6 +1018,14 @@ def main() -> None:
     if args.analysis_mode == "motion":
         for v in videos:
             print(f"\n[Motion] {v.name}")
+            if args.enable_mllm:
+                _preview_and_save_mllm_frames(
+                    video_path=str(v),
+                    sample_fps=args.mllm_fps,
+                    max_frames=5,
+                    save_dir=ROOT / "outputs" / "dynamics" / f"{v.stem}_mllm_frames",
+                    label="D4 运动自然度 VLM",
+                )
             r = run_motion_logic_analysis(str(v), args, mllm_client)
             print(f"  motion_logic_score={r.motion_logic_score:.3f}")
             print(f"  dynamics={r.dynamics_score:.3f}, smoothness={r.smoothness_score:.3f}")
