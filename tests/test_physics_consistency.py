@@ -163,3 +163,27 @@ def test_analyzer_routes_to_dashscope():
 
     assert result.vlm_score == 0.9
     mock_client.judge_video_path.assert_called_once()
+
+
+def test_analyzer_routes_to_vllm_video_path():
+    mock_client = MagicMock()
+    mock_client.config.api_provider = "vllm"
+    mock_client.judge_video_path.return_value = {
+        "reasoning": "正常",
+        "physics_score": 0.85,
+        "has_violations": False,
+        "violations": [],
+    }
+
+    hub = MagicMock()
+    hub.get.return_value = _make_flows()
+    hub.video_path = "test.mp4"
+
+    analyzer = PhysicsConsistencyAnalyzer(
+        config=PhysicsConfig(enable_mllm=True),
+        mllm_client=mock_client,
+    )
+    result = analyzer.analyze(hub)
+
+    assert result.vlm_score == 0.85
+    mock_client.judge_video_path.assert_called_once()

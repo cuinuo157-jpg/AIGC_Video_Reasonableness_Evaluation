@@ -73,3 +73,57 @@ def test_mllm_client_dashscope_video_call():
     assert kwargs["model"] == "qwen3-vl-8b-thinking"
     assert kwargs["messages"][0]["content"][0]["video"] == "file://D:/tmp/video.mp4"
     assert kwargs["messages"][0]["content"][0]["fps"] == 2
+
+
+def test_mllm_client_vllm_video_path_parses_json():
+    config = MLLMConfig(
+        backend="api",
+        api_provider="vllm",
+        api_model="qwen3.5:9b",
+        api_key=None,
+        vllm_max_frames=2,
+    )
+    client = MLLMClient(config)
+
+    with patch(
+        "src.mllm.vllm_openai_video.extract_frames_jpeg_bytes",
+        return_value=[b"jpeg1", b"jpeg2"],
+    ):
+        with patch(
+            "src.mllm.vllm_openai_video.chat_completions_text",
+            return_value='{"ok": true, "score": 7}',
+        ) as mock_chat:
+            result = client.judge_video_path("fake.mp4", "prompt", fps=2)
+
+    assert result == {"ok": True, "score": 7}
+    mock_chat.assert_called_once()
+    kw = mock_chat.call_args.kwargs
+    assert kw["model"] == "qwen3.5:9b"
+    assert kw["timeout"] == 300.0
+
+
+def test_mllm_client_vllm_clip_no_response_format():
+    config = MLLMConfig(
+        backend="api",
+        api_provider="vllm",
+        api_model="qwen3.5:9b",
+        vllm_max_frames=8,
+    )
+    client = MLLMClient(config)
+    frames = [np.zeros((10, 10, 3), dtype=np.uint8) for _ in range(3)]
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = '{"x": 1}'
+    mock_resp = MagicMock()
+    mock_resp.choices = [mock_choice]
+
+    with patch("openai.OpenAI") as mock_openai_cls:
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_resp
+        mock_openai_cls.return_value = mock_client
+        out = client.judge_video_clip(frames, "hi")
+
+    assert out == {"x": 1}
+    mock_client.chat.completions.create.assert_called_once()
+    create_kw = mock_client.chat.completions.create.call_args.kwargs
+    assert "response_format" not in create_kw

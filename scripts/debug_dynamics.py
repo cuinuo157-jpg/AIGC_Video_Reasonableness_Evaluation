@@ -771,30 +771,32 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--enable-mllm", action="store_true", help="启用 MLLM 辅助判定")
     parser.add_argument(
         "--mllm-provider",
-        default="dashscope",
-        choices=["openai", "anthropic", "dashscope"],
-        help="MLLM API 提供方",
+        default="vllm",
+        choices=["vllm", "openai", "anthropic", "dashscope"],
+        help="MLLM API 提供方（默认 vllm：OpenAI 兼容本地服务）",
     )
     parser.add_argument(
         "--mllm-model",
-        default="qwen3-vl-8b-thinking",
-        help="MLLM 模型名",
+        default="qwen3.5:9b",
+        help="MLLM 模型名（vllm 默认 qwen3.5:9b；dashscope 可传 qwen3-vl-8b-thinking 等）",
     )
     parser.add_argument(
         "--mllm-api-key",
-        default=os.environ.get("DASHSCOPE_API_KEY", ""),
-        help="MLLM API Key",
+        default=os.environ.get("DASHSCOPE_API_KEY", "")
+        or os.environ.get("VLLM_API_KEY", ""),
+        help="API Key（dashscope 必填；vllm 可空，空则使用 not-needed）",
     )
     parser.add_argument(
         "--mllm-base-url",
-        default=os.environ.get("DASHSCOPE_BASE_URL", ""),
-        help="MLLM API Base URL（可选）",
+        default=os.environ.get("DASHSCOPE_BASE_URL", "")
+        or os.environ.get("VLLM_OPENAI_BASE_URL", ""),
+        help="Base URL（vllm 默认 http://localhost:8201/v1；dashscope 可设国际区 endpoint）",
     )
     parser.add_argument(
         "--mllm-fps",
         type=int,
         default=2,
-        help="DashScope 视频模式抽帧 fps（仅 dashscope provider 生效）",
+        help="视频路径模式抽帧 fps（dashscope / vllm 的 judge_video_path 均使用）",
     )
     parser.add_argument("--subject", action="store_true", help="启用主体分割 (SAM2)")
     parser.add_argument(
@@ -827,13 +829,15 @@ def build_mllm_client(args: argparse.Namespace) -> MLLMClient | None:
     if not args.enable_mllm:
         return None
     api_key = (args.mllm_api_key or "").strip()
-    if not api_key:
-        raise ValueError("启用 --enable-mllm 时必须提供 --mllm-api-key 或设置 DASHSCOPE_API_KEY")
+    if args.mllm_provider != "vllm" and not api_key:
+        raise ValueError(
+            "启用 --enable-mllm 且非 vllm 时必须提供 --mllm-api-key 或设置 DASHSCOPE_API_KEY"
+        )
     cfg = MLLMConfig(
         backend="api",
         api_provider=args.mllm_provider,
         api_model=args.mllm_model,
-        api_key=api_key,
+        api_key=api_key or None,
         api_base_url=(args.mllm_base_url or "").strip() or None,
         dashscope_video_fps=args.mllm_fps,
     )

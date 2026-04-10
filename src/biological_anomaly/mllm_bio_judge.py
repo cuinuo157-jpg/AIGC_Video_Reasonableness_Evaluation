@@ -14,7 +14,7 @@ from .roi_utils import extract_suspicious_rois
 
 def _judge_rois_with_mllm(crop_frames: list[np.ndarray], mllm_client: Any) -> dict:
     provider = getattr(getattr(mllm_client, "config", None), "api_provider", "")
-    if provider == "dashscope" and hasattr(mllm_client, "judge_video_path"):
+    if provider in ("dashscope", "vllm") and hasattr(mllm_client, "judge_video_path"):
         tmp_dir = tempfile.mkdtemp(prefix="bio_anomaly_dashscope_")
         video_path = Path(tmp_dir) / "roi_clip.mp4"
         try:

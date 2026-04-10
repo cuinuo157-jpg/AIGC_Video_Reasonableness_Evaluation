@@ -2,15 +2,18 @@
 """
 D5 物理常识与动力学一致性模块调试脚本。
 
-使用 VLM（DashScope）进行物理常识判定。
+启用 --enable-mllm 时默认走本地 OpenAI 兼容 VLLM（与 scripts/test_qwen_35_video.py 同接口）；
+可选用 --mllm-provider dashscope 调用百炼。
 
 依赖:
-    pip install dashscope>=1.19.0
-    或使用: uv sync
+    VLLM: 无额外 Python 包（openai 客户端）
+    DashScope: pip install dashscope>=1.19.0
 
 环境变量:
-    DASHSCOPE_API_KEY   必填，百炼 API Key
-    DASHSCOPE_BASE_URL  可选，国际区等需设置 endpoint
+    VLLM_OPENAI_BASE_URL  默认 http://localhost:8201/v1
+    VLLM_API_KEY          可空（本地常用 not-needed）
+    DASHSCOPE_API_KEY     dashscope 时必填
+    DASHSCOPE_BASE_URL    可选
 
 用法示例:
     python scripts/debug_physics.py --input data/sample.mp4
@@ -56,25 +59,26 @@ def _load_repo_dotenv() -> None:
         os.environ[key] = val
 
 
-def build_mllm_client(
-    api_key: str | None = None,
-    api_provider: str = "dashscope",
-    api_model: str = "qwen3-vl-8b-thinking",
-) -> MLLMClient | None:
-    """构建 MLLM 客户端。"""
-    api_key = api_key or os.environ.get("DASHSCOPE_API_KEY", "").strip()
-    if not api_key:
-        print("警告: DASHSCOPE_API_KEY 未设置，将跳过 VLM 判定", file=sys.stderr)
+def build_mllm_client(args: argparse.Namespace) -> MLLMClient | None:
+    """构建 MLLM 客户端（与 debug_dynamics 参数语义一致）。"""
+    if not args.enable_mllm:
         return None
-
-    config = MLLMConfig(
+    api_key = (args.mllm_api_key or "").strip()
+    if args.mllm_provider != "vllm" and not api_key:
+        print(
+            "错误: 启用 --enable-mllm 且非 vllm 时必须提供 --mllm-api-key 或设置 DASHSCOPE_API_KEY",
+            file=sys.stderr,
+        )
+        return None
+    cfg = MLLMConfig(
         backend="api",
-        api_provider=api_provider,
-        api_model=api_model,
-        api_key=api_key,
-        api_base_url=os.environ.get("DASHSCOPE_BASE_URL", "").strip() or None,
+        api_provider=args.mllm_provider,
+        api_model=args.mllm_model,
+        api_key=api_key or None,
+        api_base_url=(args.mllm_base_url or "").strip() or None,
+        dashscope_video_fps=args.mllm_fps,
     )
-    return MLLMClient(config)
+    return MLLMClient(cfg)
 
 
 def analyze_video(
@@ -122,19 +126,40 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--enable-mllm",
         action="store_true",
-        help="启用 VLM 物理判定（需要 DASHSCOPE_API_KEY）",
+        help="启用 VLM 物理判定（默认 vllm：OpenAI 兼容本地服务）",
     )
     p.add_argument(
-        "--api-key",
+        "--mllm-provider",
         type=str,
-        default="",
-        help="DashScope API Key（默认读环境变量 DASHSCOPE_API_KEY）",
+        default="vllm",
+        choices=["vllm", "openai", "anthropic", "dashscope"],
+        help="MLLM 提供方（默认 vllm）",
     )
     p.add_argument(
-        "--api-model",
+        "--mllm-model",
         type=str,
-        default="qwen3-vl-8b-thinking",
-        help="VLM 模型名",
+        default="qwen3.5:9b",
+        help="模型名（vllm 默认 qwen3.5:9b；dashscope 可传 qwen3-vl-8b-thinking 等）",
+    )
+    p.add_argument(
+        "--mllm-api-key",
+        type=str,
+        default=os.environ.get("DASHSCOPE_API_KEY", "")
+        or os.environ.get("VLLM_API_KEY", ""),
+        help="API Key（dashscope 必填；vllm 可空）",
+    )
+    p.add_argument(
+        "--mllm-base-url",
+        type=str,
+        default=os.environ.get("DASHSCOPE_BASE_URL", "")
+        or os.environ.get("VLLM_OPENAI_BASE_URL", ""),
+        help="Base URL（vllm 默认代码内 localhost:8201/v1）",
+    )
+    p.add_argument(
+        "--mllm-fps",
+        type=int,
+        default=2,
+        help="judge_video_path 抽帧 fps（dashscope / vllm）",
     )
     p.add_argument(
         "--save-json",
@@ -155,10 +180,7 @@ def main(argv: list[str] | None = None) -> int:
 
     mllm_client = None
     if args.enable_mllm:
-        mllm_client = build_mllm_client(
-            api_key=args.api_key or None,
-            api_model=args.api_model,
-        )
+        mllm_client = build_mllm_client(args)
         if not mllm_client:
             print("错误: 无法初始化 MLLM 客户端", file=sys.stderr)
             return 1
