@@ -392,6 +392,7 @@ def main() -> None:
 
     mllm_client = build_mllm_client(args)
 
+    t_total = time.time()
     run_one(
         video_path,
         args.device,
@@ -400,6 +401,7 @@ def main() -> None:
         mllm_client=mllm_client,
         vlm_mode=args.vlm_mode,
     )
+    print(f"\n总耗时: {time.time() - t_total:.1f}s")
 
 
 if __name__ == "__main__":

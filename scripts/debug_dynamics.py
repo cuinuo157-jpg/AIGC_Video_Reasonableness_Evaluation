@@ -936,6 +936,7 @@ def save_motion_result_json(
 def main() -> None:
     _load_repo_dotenv()
     args = parse_args()
+    t_total = time.time()
 
     input_path = Path(args.input)
     if input_path.is_dir():
@@ -971,6 +972,7 @@ def main() -> None:
                 print(f"  naturalness={r.naturalness_score:.3f}, issues={r.naturalness_issues}")
             result_path = save_motion_result_json(str(v), r)
             print(f"  结果JSON已保存: {result_path}")
+        print(f"\n总耗时: {time.time() - t_total:.1f}s")
         return
 
     if args.analysis_mode == "pipeline":
@@ -981,6 +983,7 @@ def main() -> None:
             d = report.dimensions.get("motion_logic")
             if d and d.details:
                 print(f"  motion_logic_score={getattr(d.details, 'motion_logic_score', 0.0):.3f}")
+        print(f"\n总耗时: {time.time() - t_total:.1f}s")
         return
 
     results: list[tuple[str, DynamicsDetail]] = []
@@ -1011,6 +1014,8 @@ def main() -> None:
             if args.subject and d.subject_perceptual is not None:
                 line += f" {d.subject_perceptual:>8.3f}"
             print(line)
+
+    print(f"\n总耗时: {time.time() - t_total:.1f}s")
 
 
 if __name__ == "__main__":

@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
@@ -276,6 +277,8 @@ def main():
     print(f"视频: {video_path}")
     print(f"设备: {args.device}")
 
+    t_total = time.time()
+
     # Step 1: 读帧
     frames, fps = load_frames(video_path, args.sample_rate)
     if len(frames) < 2:
@@ -297,7 +300,24 @@ def main():
         out_dir = str(ROOT / "outputs" / "face_identity")
         save_visualization(frames, frame_data, result, out_dir)
 
-    print(f"\n完成。")
+    elapsed_total = time.time() - t_total
+    result_path = ROOT / "outputs" / "face_identity_result.json"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    result_json = {
+        "video": video_path,
+        "n_frames": len(frames),
+        "fps": fps,
+        "identity_score": result.identity_score,
+        "csim_ref": result.csim_ref,
+        "csim_adj": result.csim_adj,
+        "csim_min": result.csim_min,
+        "drop_event_count": len(result.drop_events),
+        "elapsed_sec": round(elapsed_total, 3),
+    }
+    with open(result_path, "w", encoding="utf-8") as f:
+        json.dump(result_json, f, ensure_ascii=False, indent=2)
+    print(f"\n总耗时: {elapsed_total:.1f}s")
+    print(f"结果已保存到 {result_path}")
 
 
 if __name__ == "__main__":

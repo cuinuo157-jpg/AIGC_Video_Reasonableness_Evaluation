@@ -15,7 +15,9 @@ MediaPipe Iris 瞳孔追踪调试脚本（基于 FeatureHub）。
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+import time
 from pathlib import Path
 
 import cv2
@@ -106,6 +108,7 @@ def main() -> None:
     print(f"输入视频: {video_path}")
     print(f"设备: {args.device}")
 
+    t_total = time.time()
     hub = create_default_hub(str(video_path), device=args.device)
     frames = hub.get("video_frames")
     iris_seq = hub.get("iris_tracking")
@@ -133,8 +136,26 @@ def main() -> None:
     print(f"平均左眼瞳孔半径(归一化): {avg_lrn:.5f}" if avg_lrn is not None else "平均左眼瞳孔半径(归一化): N/A")
     print(f"平均右眼瞳孔半径(归一化): {avg_rrn:.5f}" if avg_rrn is not None else "平均右眼瞳孔半径(归一化): N/A")
 
+    elapsed_total = time.time() - t_total
+    result_path = ROOT / "outputs" / "iris_tracking" / f"{video_path.stem}_result.json"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    result_json = {
+        "video": str(video_path),
+        "n_frames": n,
+        "left_detected": left_detected,
+        "right_detected": right_detected,
+        "both_detected": both_detected,
+        "avg_ipd": round(avg_ipd, 6) if avg_ipd is not None else None,
+        "avg_left_radius_norm": round(avg_lrn, 6) if avg_lrn is not None else None,
+        "avg_right_radius_norm": round(avg_rrn, 6) if avg_rrn is not None else None,
+        "elapsed_sec": round(elapsed_total, 3),
+    }
+    with open(result_path, "w", encoding="utf-8") as f:
+        json.dump(result_json, f, ensure_ascii=False, indent=2)
+    print(f"\n总耗时: {elapsed_total:.1f}s")
+    print(f"结果已保存到 {result_path}")
+
     if not args.save_vis:
-        print("\n完成（仅统计）。如需可视化请加 --save-vis。")
         return
 
     out_dir = ROOT / "outputs" / "iris_tracking" / video_path.stem

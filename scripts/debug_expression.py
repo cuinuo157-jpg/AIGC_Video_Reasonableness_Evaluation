@@ -362,6 +362,8 @@ def main():
     print(f"视频: {video_path}")
     print(f"设备: {args.device}")
 
+    t_total = time.time()
+
     # Step 1: 读帧
     frames, fps = load_frames(video_path, args.sample_rate)
     if len(frames) < 2:
@@ -382,7 +384,22 @@ def main():
         out_dir = str(ROOT / "outputs" / "expression")
         save_visualization(frames, au_per_frame, analysis, out_dir)
 
-    print(f"\n完成。")
+    elapsed_total = time.time() - t_total
+    result_path = ROOT / "outputs" / "expression_result.json"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    result_json = {
+        "video": video_path,
+        "n_frames": len(frames),
+        "fps": fps,
+        "expression_score": analysis["expression_score"],
+        "mean_smoothness": analysis["mean_smoothness"],
+        "violation_count": len(analysis["violations"]),
+        "elapsed_sec": round(elapsed_total, 3),
+    }
+    with open(result_path, "w", encoding="utf-8") as f:
+        json.dump(result_json, f, ensure_ascii=False, indent=2)
+    print(f"\n总耗时: {elapsed_total:.1f}s")
+    print(f"结果已保存到 {result_path}")
 
 
 if __name__ == "__main__":

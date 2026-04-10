@@ -846,6 +846,7 @@ def main():
         mllm_max_crops=args.mllm_max_crops,
     )
     mllm_client = build_mllm_client(args, config.enable_mllm)
+    t_total = time.time()
 
     print(f"{'='*60}")
     print(f"生物特征异常检测 (Biological Anomaly Detection)")
@@ -933,6 +934,7 @@ def main():
     # 保存 JSON 结果
     result_path = ROOT / "outputs" / "bio_anomaly_result.json"
     result_path.parent.mkdir(parents=True, exist_ok=True)
+    elapsed_total = time.time() - t_total
     result_json = {
         "video": video_path,
         "n_frames": len(frames),
@@ -946,12 +948,12 @@ def main():
         "l3_count": len(l3["anomalies"]),
         "l3_skipped": bool(l3.get("skipped", False)),
         "l3_raw_result": l3.get("raw_result", {}),
+        "elapsed_sec": round(elapsed_total, 3),
     }
     with open(result_path, "w", encoding="utf-8") as f:
         json.dump(result_json, f, ensure_ascii=False, indent=2)
-    print(f"\n结果已保存到 {result_path}")
-
-    print(f"\n完成。")
+    print(f"\n总耗时: {elapsed_total:.1f}s")
+    print(f"结果已保存到 {result_path}")
 
 
 if __name__ == "__main__":

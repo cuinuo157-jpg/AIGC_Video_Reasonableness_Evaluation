@@ -26,6 +26,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -185,6 +186,7 @@ def main(argv: list[str] | None = None) -> int:
             print("错误: 无法初始化 MLLM 客户端", file=sys.stderr)
             return 1
 
+    t_total = time.time()
     try:
         result = analyze_video(
             args.input,
@@ -219,13 +221,17 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print("  - VLM 评分: 未启用或不可用")
 
+        elapsed = time.time() - t_total
+        result["elapsed_sec"] = round(elapsed, 3)
+        print(f"\n总耗时: {elapsed:.1f}s")
+
         if args.save_json:
             Path(args.save_json).parent.mkdir(parents=True, exist_ok=True)
             Path(args.save_json).write_text(
                 json.dumps(result, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            print(f"\n结果已保存: {args.save_json}")
+            print(f"结果已保存: {args.save_json}")
 
         return 0
 
