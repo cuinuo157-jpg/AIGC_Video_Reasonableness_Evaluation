@@ -37,6 +37,7 @@ from src.feature_hub.hub import FeatureHub
 from src.feature_hub.extractors.subject_segmentation import SubjectSegmentationResult
 from src.mllm.client import MLLMClient
 from src.mllm.config import MLLMConfig
+from src.mllm.prompts import MOTION_NATURALNESS_PROMPT
 from src.motion_logic.analyzer import MotionLogicAnalyzer
 from src.motion_logic.config import MotionLogicConfig
 from src.motion_logic.dynamics_scorer import compute_dynamics_score, DynamicsDetail
@@ -972,6 +973,22 @@ def main() -> None:
                 print(f"  naturalness={r.naturalness_score:.3f}, issues={r.naturalness_issues}")
             result_path = save_motion_result_json(str(v), r)
             print(f"  结果JSON已保存: {result_path}")
+
+            mllm_raw = getattr(r, "naturalness_mllm_result", None)
+            if mllm_raw and not mllm_raw.get("skipped"):
+                mllm_out = (ROOT / "outputs" / "dynamics")
+                mllm_out.mkdir(parents=True, exist_ok=True)
+                mllm_payload = {"prompt": MOTION_NATURALNESS_PROMPT, "response": mllm_raw}
+                mllm_path = mllm_out / f"{v.stem}_mllm_prompt_response.json"
+                mllm_path.write_text(json.dumps(mllm_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+                print(f"\n{'='*60}")
+                print("[MLLM 调用: 运动自然度判定]")
+                print(f"{'='*60}")
+                print("[提示词]:")
+                print(MOTION_NATURALNESS_PROMPT)
+                print(f"\n[模型完整回复]:")
+                print(json.dumps(mllm_raw, ensure_ascii=False, indent=2))
+                print(f"\n提示词+回复已保存: {mllm_path}")
         print(f"\n总耗时: {time.time() - t_total:.1f}s")
         return
 

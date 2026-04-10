@@ -55,6 +55,7 @@ from src.biological_anomaly.body_anomaly import (
 )
 from src.biological_anomaly.mllm_bio_judge import judge_biological_anomaly_mllm
 from src.biological_anomaly.analyzer import _collect_suspicious
+from src.biological_anomaly.prompts import BIOLOGICAL_ANOMALY_PROMPT
 from src.mllm.client import MLLMClient
 from src.mllm.config import MLLMConfig
 
@@ -874,6 +875,21 @@ def main():
     # Step 4.7: Level 3 MLLM 语义兜底
     l3 = run_level3(frames, keypoints_seq, l1, l2, config, mllm_client)
     print(f"\n  [Level3-MLLM] 异常: {len(l3['anomalies'])} 处")
+    if not l3.get("skipped") and l3.get("raw_result"):
+        mllm_raw = l3["raw_result"]
+        mllm_out = ROOT / "outputs" / "bio_anomaly"
+        mllm_out.mkdir(parents=True, exist_ok=True)
+        mllm_payload = {"prompt": BIOLOGICAL_ANOMALY_PROMPT, "response": mllm_raw}
+        mllm_path = mllm_out / f"{Path(video_path).stem}_mllm_prompt_response.json"
+        mllm_path.write_text(json.dumps(mllm_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"\n{'='*60}")
+        print("[MLLM 调用: 生物特征异常 Level 3]")
+        print(f"{'='*60}")
+        print("[提示词]:")
+        print(BIOLOGICAL_ANOMALY_PROMPT)
+        print(f"\n[模型完整回复]:")
+        print(json.dumps(mllm_raw, ensure_ascii=False, indent=2))
+        print(f"\n提示词+回复已保存: {mllm_path}")
 
     # Step 4.5: 按部位正常帧比例 (VMBench OIS 风格)
     body_seq = [kp.get("body") for kp in keypoints_seq]

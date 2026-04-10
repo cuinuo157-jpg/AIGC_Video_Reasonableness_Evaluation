@@ -39,6 +39,7 @@ from src.physics_consistency.analyzer import PhysicsConsistencyAnalyzer
 from src.physics_consistency.config import PhysicsConfig
 from src.mllm.config import MLLMConfig
 from src.mllm.client import MLLMClient
+from src.mllm.prompts.physics_commonsense import build_physics_prompt
 
 
 def _load_repo_dotenv() -> None:
@@ -213,11 +214,35 @@ def main(argv: list[str] | None = None) -> int:
         if result["vlm_score"] is not None:
             print(f"  - VLM 评分: {result['vlm_score']:.3f}")
             if result["vlm_reasoning"]:
-                print(f"    推理过程: {result['vlm_reasoning'][:200]}...")
+                print(f"    推理过程: {result['vlm_reasoning']}")
             if result["vlm_violations"]:
                 print(f"    检测到 {len(result['vlm_violations'])} 个物理违规:")
                 for vio in result["vlm_violations"]:
                     print(f"      - [{vio['type']}] {vio['description']} (严重度: {vio['severity']})")
+
+            # 打印提示词 + 完整模型回复，并保存
+            prompt = build_physics_prompt(drift_events=result.get("drift_events"))
+            mllm_payload = {
+                "prompt": prompt,
+                "response": {
+                    "vlm_score": result["vlm_score"],
+                    "vlm_reasoning": result["vlm_reasoning"],
+                    "vlm_violations": result["vlm_violations"],
+                },
+            }
+            stem = Path(args.input).stem
+            mllm_out = Path(args.save_json).parent if args.save_json else REPO_ROOT / "outputs" / "physics"
+            mllm_out.mkdir(parents=True, exist_ok=True)
+            mllm_path = mllm_out / f"{stem}_mllm_prompt_response.json"
+            mllm_path.write_text(json.dumps(mllm_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"\n{'='*60}")
+            print("[MLLM 调用: 物理常识判定]")
+            print(f"{'='*60}")
+            print("[提示词]:")
+            print(prompt)
+            print(f"\n[模型完整回复]:")
+            print(json.dumps(mllm_payload["response"], ensure_ascii=False, indent=2))
+            print(f"\n提示词+回复已保存: {mllm_path}")
         else:
             print("  - VLM 评分: 未启用或不可用")
 

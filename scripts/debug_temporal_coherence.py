@@ -317,6 +317,30 @@ def run_one(
     if vlm_result and not vlm_result.get("skipped"):
         print(f"  vlm_anomaly_score: {vlm_result.get('anomaly_score', 'N/A')}")
         print(f"  vlm_has_anomalies: {vlm_result.get('has_anomalies', 'N/A')}")
+
+        prompt = (
+            TEMPORAL_ANOMALY_DIRECT_PROMPT
+            if vlm_mode == "direct"
+            else TEMPORAL_ANOMALY_CONFIRM_PROMPT.format(
+                events_desc="\n".join(
+                    f"{i}. 帧 {e.frame_idx}: track_id={e.track_id} {'出现' if e.event_type == 'appear' else '消失'}"
+                    for i, e in enumerate(result.abnormal_events)
+                )
+            )
+        )
+        mllm_payload = {"prompt": prompt, "response": vlm_result}
+        mllm_path = output_dir / f"{video_path.stem}_mllm_prompt_response.json"
+        with mllm_path.open("w", encoding="utf-8") as f:
+            json.dump(mllm_payload, f, ensure_ascii=False, indent=2)
+        print(f"\n{'='*60}")
+        print(f"[MLLM 调用: 时序连贯性 ({vlm_mode} 模式)]")
+        print(f"{'='*60}")
+        print("[提示词]:")
+        print(prompt)
+        print(f"\n[模型完整回复]:")
+        print(json.dumps(vlm_result, ensure_ascii=False, indent=2))
+        print(f"\n提示词+回复已保存: {mllm_path}")
+
     print(f"  saved: {out_path}")
     print(f"  elapsed: {elapsed:.1f}s")
     return out_path
