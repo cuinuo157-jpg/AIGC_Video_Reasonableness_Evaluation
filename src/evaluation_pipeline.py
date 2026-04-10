@@ -8,8 +8,11 @@ import numpy as np
 from src.face_identity.analyzer import FaceIdentityAnalyzer
 from src.expression_naturalness.analyzer import ExpressionAnalyzer
 from src.biological_anomaly.analyzer import BiologicalAnomalyAnalyzer
+from src.biological_anomaly.config import BiologicalAnomalyConfig
 from src.motion_logic.analyzer import MotionLogicAnalyzer
+from src.motion_logic.config import MotionLogicConfig
 from src.physics_consistency.analyzer import PhysicsConsistencyAnalyzer
+from src.physics_consistency.config import PhysicsConfig
 from src.background_consistency.analyzer import BackgroundConsistencyAnalyzer
 from src.perceptual_quality.analyzer import PerceptualQualityAnalyzer
 from src.temporal_coherence.analyzer import TemporalCoherenceAnalyzer
@@ -83,13 +86,25 @@ class EvaluationPipeline:
     ) -> None:
         self.device = device
         self.weights = weights or DEFAULT_WEIGHTS
+        self.enable_mllm = enable_mllm
+        self._mllm_client = mllm_client
+        mllm_for_analyzers = mllm_client if enable_mllm else None
         self._analyzers: dict[str, Any] = {
             "face_identity": FaceIdentityAnalyzer(),
             "expression": ExpressionAnalyzer(),
-            "biological_anomaly": BiologicalAnomalyAnalyzer(mllm_client=mllm_client),
-            "motion_logic": MotionLogicAnalyzer(mllm_client=mllm_client),
+            "biological_anomaly": BiologicalAnomalyAnalyzer(
+                config=BiologicalAnomalyConfig(enable_mllm=enable_mllm),
+                mllm_client=mllm_for_analyzers,
+            ),
+            "motion_logic": MotionLogicAnalyzer(
+                config=MotionLogicConfig(enable_mllm=enable_mllm),
+                mllm_client=mllm_for_analyzers,
+            ),
             "temporal_coherence": TemporalCoherenceAnalyzer(),
-            "physics": PhysicsConsistencyAnalyzer(mllm_client=mllm_client),
+            "physics": PhysicsConsistencyAnalyzer(
+                config=PhysicsConfig(enable_mllm=enable_mllm),
+                mllm_client=mllm_for_analyzers,
+            ),
             "background": BackgroundConsistencyAnalyzer(),
             "perceptual_quality": PerceptualQualityAnalyzer(),
         }

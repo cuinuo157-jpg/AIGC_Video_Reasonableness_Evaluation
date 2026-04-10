@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 import json
+from pathlib import Path
+import re
 from typing import Any
 
 import cv2
@@ -37,7 +39,18 @@ class MLLMClient:
             return self._call_openai(images_b64, prompt)
         elif self.config.api_provider == "anthropic":
             return self._call_anthropic(images_b64, prompt)
+        elif self.config.api_provider == "dashscope":
+            raise ValueError(
+                "DashScope 视频模型需要视频路径输入，请使用 judge_video_path(video_path, prompt, fps=2)。"
+            )
         raise ValueError(f"Unknown provider: {self.config.api_provider}")
+
+    def judge_video_path(self, video_path: str, prompt: str, *, fps: int | None = None) -> dict:
+        """按 DashScope 视频接口（video + fps）评估视频。"""
+        if self.config.api_provider != "dashscope":
+            raise ValueError("judge_video_path 仅适用于 api_provider='dashscope'")
+        fps = self.config.dashscope_video_fps if fps is None else fps
+        return self._call_dashscope_video(video_path=video_path, prompt=prompt, fps=fps)
 
     def _call_local(self, frames: list[np.ndarray], prompt: str) -> dict:
         if self.config.local_model == "Qwen-VL":
@@ -104,3 +117,76 @@ class MLLMClient:
             messages=[{"role": "user", "content": content}],
         )
         return json.loads(resp.content[0].text)
+
+    def _ensure_dashscope(self) -> tuple[Any, Any]:
+        try:
+            import dashscope
+            from dashscope import MultiModalConversation
+        except ImportError as e:
+            raise ImportError(
+                "使用 DashScope 需要安装依赖: pip install dashscope>=1.19.0"
+            ) from e
+        return dashscope, MultiModalConversation
+
+    def _to_file_uri(self, video_path: str) -> str:
+        if video_path.startswith("file://"):
+            return video_path
+        if "://" in video_path:
+            return video_path
+        p = Path(video_path)
+        if p.is_absolute():
+            normalized_abs = str(p).replace("\\", "/")
+            # DashScope 对 Windows 本地文件更兼容 file://D:/...（而非 file:///D:/...）
+            if re.match(r"^[A-Za-z]:/", normalized_abs):
+                return f"file://{normalized_abs}"
+            return f"file://{normalized_abs}"
+        normalized = video_path.replace("\\", "/")
+        return f"file://{normalized}"
+
+    def _call_dashscope_video(self, video_path: str, prompt: str, fps: int = 2) -> dict:
+        dashscope, MultiModalConversation = self._ensure_dashscope()
+        if self.config.api_base_url:
+            dashscope.base_http_api_url = self.config.api_base_url.rstrip("/")
+
+        video_uri = self._to_file_uri(video_path)
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"video": video_uri, "fps": fps},
+                    {"text": prompt},
+                ],
+            }
+        ]
+        response = MultiModalConversation.call(
+            api_key=self.config.api_key,
+            model=self.config.api_model,
+            messages=messages,
+        )
+        if getattr(response, "status_code", None) != 200:
+            raise RuntimeError(
+                getattr(response, "message", None)
+                or getattr(response, "code", None)
+                or str(response)
+            )
+
+        out = getattr(response, "output", None) or {}
+        choices = out.get("choices") if isinstance(out, dict) else None
+        if not choices:
+            raise ValueError("DashScope 返回为空，未找到 choices")
+
+        msg = choices[0].get("message") or {}
+        content = msg.get("content")
+        text = ""
+        if isinstance(content, list):
+            text = "".join(
+                part.get("text", "")
+                for part in content
+                if isinstance(part, dict) and "text" in part
+            )
+        elif isinstance(content, str):
+            text = content
+
+        if not text:
+            raise ValueError("DashScope 响应中未提取到文本内容")
+        return json.loads(text)

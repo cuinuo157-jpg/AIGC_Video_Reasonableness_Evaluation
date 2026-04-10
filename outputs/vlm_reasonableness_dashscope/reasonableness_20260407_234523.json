@@ -1,0 +1,11 @@
+{
+  "batch_id": "20260407_234523",
+  "model": "qwen3-vl-8b-thinking",
+  "max_frames": 16,
+  "results": [
+    {
+      "video_path": "D:\\workspace\\projects\\activate\\AIGC_Video_Reasonableness_Evaluation\\data\\videos\\The camera orbits around. Airpods Max, the camera circles around.-0.mp4",
+      "error": "<400> InternalError.Algo.InvalidParameter: This model only supports incremental_output set to True."
+    }
+  ]
+}

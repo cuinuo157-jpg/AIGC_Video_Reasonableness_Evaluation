@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -17,13 +18,129 @@ from src.feature_hub.extractors.subject_segmentation import (
     _try_load_grounding_dino,
     _detect_boxes_grounding_dino,
 )
-from src.temporal_coherence.analyzer import (
-    TemporalCoherenceAnalyzer,
-)
+from src.temporal_coherence.analyzer import TemporalCoherenceAnalyzer
+from src.mllm.config import MLLMConfig
+from src.mllm.client import MLLMClient
 
 
-def _serialize_result(result) -> dict:
-    return {
+TEMPORAL_ANOMALY_CONFIRM_PROMPT = """你是一个视频时序一致性分析专家。视频中检测到以下疑似异常事件，请逐一判断是否为真实的 AI 生成异常。
+
+## 疑似异常事件
+{events_desc}
+
+## 判断标准
+- 物体凭空出现（非从画面边缘进入、非逐渐放大）→ 异常
+- 物体突然消失（非从画面边缘离开、非逐渐缩小）→ 异常
+- 物体出现/消失符合场景逻辑（如灯光开关、遮挡）→ 正常
+
+请以 JSON 格式输出：
+{{
+    "has_anomalies": true或false,
+    "anomaly_score": 0.0到1.0（0=完全正常，1=严重异常）,
+    "judgements": [
+        {{
+            "event_index": 0,
+            "is_anomaly": true或false,
+            "reason": "判断理由"
+        }}
+    ]
+}}"""
+
+TEMPORAL_ANOMALY_DIRECT_PROMPT = """你是一个视频时序一致性分析专家。请直接分析这段视频，判断是否存在物体异常出现或消失的现象。
+
+## 检查要点
+- 物体是否凭空出现（非从画面边缘进入、非逐渐放大出现）
+- 物体是否突然消失（非从画面边缘离开、非逐渐缩小消失）
+- 背景元素（月亮、星星、建筑、树木等）是否突然出现或消失
+- 前景物体（人、动物、车辆等）是否有不合理的出现/消失
+
+请以 JSON 格式输出：
+{{
+    "has_anomalies": true或false,
+    "anomaly_score": 0.0到1.0（0=完全正常，1=严重异常）,
+    "anomalies": [
+        {{
+            "type": "appear或disappear",
+            "object": "物体描述",
+            "frame_range": "大约在哪个时间段",
+            "reason": "为何判断为异常",
+            "severity": "mild或moderate或severe"
+        }}
+    ]
+}}"""
+
+
+def _load_repo_dotenv() -> None:
+    path = ROOT / ".env"
+    if not path.is_file():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        val = val.strip()
+        if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+            val = val[1:-1]
+        os.environ[key] = val
+
+
+def build_mllm_client(api_key: str = "", api_model: str = "qwen3-vl-8b-thinking") -> MLLMClient | None:
+    api_key = api_key or os.environ.get("DASHSCOPE_API_KEY", "").strip()
+    if not api_key:
+        print("警告: DASHSCOPE_API_KEY 未设置，跳过 VLM 判定", file=sys.stderr)
+        return None
+    config = MLLMConfig(
+        backend="api",
+        api_provider="dashscope",
+        api_model=api_model,
+        api_key=api_key,
+        api_base_url=os.environ.get("DASHSCOPE_BASE_URL", "").strip() or None,
+    )
+    return MLLMClient(config)
+
+
+def _call_vlm(hub, mllm_client: MLLMClient, prompt: str, video_path: Path) -> dict:
+    """统一 VLM 调用，DashScope 优先走视频路径。"""
+    provider = getattr(getattr(mllm_client, "config", None), "api_provider", "")
+    if provider == "dashscope" and hasattr(mllm_client, "judge_video_path"):
+        try:
+            return mllm_client.judge_video_path(str(video_path), prompt)
+        except Exception:
+            pass
+    try:
+        frames = hub.get("video_frames")
+        return mllm_client.judge_video_clip(frames, prompt)
+    except Exception as e:
+        return {"skipped": True, "reason": str(e)}
+
+
+def _judge_anomalies_confirm(
+    hub, abnormal_events: list, mllm_client: MLLMClient, video_path: Path
+) -> dict:
+    """confirm 模式：DINO 初筛后，VLM 对 abnormal 事件逐一确认。"""
+    if not abnormal_events:
+        return {"skipped": True, "reason": "no abnormal events"}
+    events_desc = "\n".join(
+        f"{i}. 帧 {e.frame_idx}：物体（track_id={e.track_id}）"
+        f"{'突然出现' if e.event_type == 'appear' else '突然消失'}"
+        f"，位置 bbox={[round(v, 1) for v in e.bbox]}"
+        for i, e in enumerate(abnormal_events)
+    )
+    prompt = TEMPORAL_ANOMALY_CONFIRM_PROMPT.format(events_desc=events_desc)
+    return _call_vlm(hub, mllm_client, prompt, video_path)
+
+
+def _judge_anomalies_direct(hub, mllm_client: MLLMClient, video_path: Path) -> dict:
+    """direct 模式：跳过 DINO，直接让 VLM 判断视频中是否有物体异常出现/消失。"""
+    return _call_vlm(hub, mllm_client, TEMPORAL_ANOMALY_DIRECT_PROMPT, video_path)
+
+
+def _serialize_result(result, vlm_result: dict | None = None) -> dict:
+    out = {
         "applicable": result.applicable,
         "skip_reason": result.skip_reason,
         "temporal_coherence_score": result.temporal_coherence_score,
@@ -40,6 +157,9 @@ def _serialize_result(result) -> dict:
             for e in result.temporal_events
         ],
     }
+    if vlm_result:
+        out["vlm_judgement"] = vlm_result
+    return out
 
 
 def _save_detection_visualizations(
@@ -129,14 +249,30 @@ def run_one(
     device: str,
     output_dir: Path,
     save_det_vis: bool = False,
+    mllm_client: MLLMClient | None = None,
+    vlm_mode: str = "confirm",  # "confirm" | "direct"
 ) -> Path:
     t0 = time.time()
     hub = create_default_hub(str(video_path), device=device)
-    analyzer = TemporalCoherenceAnalyzer()
-    result = analyzer.analyze(hub)
+
+    vlm_result = None
+
+    if mllm_client and vlm_mode == "direct":
+        # direct 模式：跳过 DINO，直接 VLM 判定
+        print("  VLM direct 模式，跳过 Grounding DINO...")
+        vlm_result = _judge_anomalies_direct(hub, mllm_client, video_path)
+        result = TemporalCoherenceAnalyzer().analyze(hub)
+    else:
+        # confirm 模式（默认）：DINO 先跑，abnormal 事件再交 VLM 确认
+        analyzer = TemporalCoherenceAnalyzer()
+        result = analyzer.analyze(hub)
+        if mllm_client and result.applicable and result.abnormal_events:
+            print(f"  VLM confirm 模式，确认 {len(result.abnormal_events)} 个异常事件...")
+            vlm_result = _judge_anomalies_confirm(hub, result.abnormal_events, mllm_client, video_path)
+
     elapsed = time.time() - t0
 
-    payload = _serialize_result(result)
+    payload = _serialize_result(result, vlm_result)
     payload["video_path"] = str(video_path)
     payload["elapsed_sec"] = round(elapsed, 3)
 
@@ -148,7 +284,7 @@ def run_one(
     if save_det_vis:
         vis_dir, n_saved = _save_detection_visualizations(
             hub=hub,
-            analyzer=analyzer,
+            analyzer=TemporalCoherenceAnalyzer(),
             video_name=video_path.stem,
             device=device,
             output_dir=output_dir,
@@ -163,6 +299,9 @@ def run_one(
     print(f"  score: {result.temporal_coherence_score:.4f}")
     print(f"  events: {len(result.temporal_events)}")
     print(f"  abnormal: {len(result.abnormal_events)}")
+    if vlm_result and not vlm_result.get("skipped"):
+        print(f"  vlm_anomaly_score: {vlm_result.get('anomaly_score', 'N/A')}")
+        print(f"  vlm_has_anomalies: {vlm_result.get('has_anomalies', 'N/A')}")
     print(f"  saved: {out_path}")
     print(f"  elapsed: {elapsed:.1f}s")
     return out_path
@@ -182,7 +321,26 @@ def main() -> None:
         action="store_true",
         help="保存关键帧 GroundingDINO 检测框可视化",
     )
+    parser.add_argument(
+        "--enable-mllm",
+        action="store_true",
+        help="启用 VLM 判定（需要 DASHSCOPE_API_KEY）",
+    )
+    parser.add_argument(
+        "--vlm-mode",
+        choices=["confirm", "direct"],
+        default="confirm",
+        help=(
+            "VLM 调用模式：\n"
+            "  confirm = DINO 初筛后，仅对 reason=abnormal 的事件做 VLM 语义确认（省 API 费用）\n"
+            "  direct  = 跳过 DINO，直接让 VLM 判断视频中是否有物体异常出现/消失"
+        ),
+    )
+    parser.add_argument("--api-key", default="", help="DashScope API Key")
+    parser.add_argument("--api-model", default="qwen3-vl-8b-thinking", help="VLM 模型名")
     args = parser.parse_args()
+
+    _load_repo_dotenv()
 
     video_path = Path(args.input)
     if not video_path.exists():
@@ -190,11 +348,19 @@ def main() -> None:
     if video_path.is_dir():
         raise ValueError("当前脚本仅支持单视频输入，请传入具体视频文件")
 
+    mllm_client = None
+    if args.enable_mllm:
+        mllm_client = build_mllm_client(api_key=args.api_key, api_model=args.api_model)
+
     run_one(
         video_path,
         args.device,
         Path(args.output_dir),
         save_det_vis=args.save_det_vis,
+        mllm_client=mllm_client,
+        vlm_mode=args.vlm_mode,
+    )
+        mllm_client=mllm_client,
     )
 
 

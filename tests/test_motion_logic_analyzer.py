@@ -1,5 +1,6 @@
 import numpy as np
 from unittest.mock import MagicMock
+from unittest.mock import patch
 
 from src.motion_logic.analyzer import MotionLogicAnalyzer
 from src.motion_logic.config import MotionLogicConfig
@@ -150,3 +151,21 @@ def test_motion_logic_with_tracking_curvature_penalizes_teleport():
     assert result.trajectory_curvature_score is not None
     assert result.trajectory_curvature_score < 0.9
     assert result.smoothness_score < result.flow_smoothness_score
+
+
+def test_motion_logic_mllm_accepts_is_reasonable_field():
+    flows = [
+        (np.ones((16, 16), dtype=np.float32), np.ones((16, 16), dtype=np.float32))
+        for _ in range(6)
+    ]
+    hub = _make_hub({"optical_flow": flows})
+    mllm = MagicMock()
+
+    with patch(
+        "src.motion_logic.naturalness_judge.judge_naturalness_mllm",
+        return_value={"skipped": False, "is_reasonable": False, "issues": ["物体瞬移"]},
+    ):
+        result = MotionLogicAnalyzer(MotionLogicConfig(enable_mllm=True), mllm_client=mllm).analyze(hub)
+
+    assert result.naturalness_score == 0.3
+    assert result.naturalness_issues == ["物体瞬移"]

@@ -13,10 +13,16 @@ def judge_naturalness_mllm(
 ) -> dict:
     if smoothness_score > 0.8:
         return {"skipped": True, "reason": "smoothness above threshold"}
+    from src.mllm.prompts import MOTION_NATURALNESS_PROMPT
+
+    provider = getattr(getattr(mllm_client, "config", None), "api_provider", "")
+    if provider == "dashscope" and hasattr(mllm_client, "judge_video_path"):
+        video_path = getattr(hub, "video_path", None)
+        if video_path:
+            return mllm_client.judge_video_path(video_path, MOTION_NATURALNESS_PROMPT)
+
     try:
         frames = hub.get("video_frames")
     except KeyError:
         return {"skipped": True, "reason": "no video frames"}
-    from src.mllm.prompts import MOTION_NATURALNESS_PROMPT
-
     return mllm_client.judge_video_clip(frames, MOTION_NATURALNESS_PROMPT)

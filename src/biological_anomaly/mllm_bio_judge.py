@@ -1,11 +1,42 @@
 from __future__ import annotations
 
+import shutil
+import tempfile
+from pathlib import Path
 from typing import Any
 
+import cv2
 import numpy as np
 
 from .prompts import BIOLOGICAL_ANOMALY_PROMPT
 from .roi_utils import extract_suspicious_rois
+
+
+def _judge_rois_with_mllm(crop_frames: list[np.ndarray], mllm_client: Any) -> dict:
+    provider = getattr(getattr(mllm_client, "config", None), "api_provider", "")
+    if provider == "dashscope" and hasattr(mllm_client, "judge_video_path"):
+        tmp_dir = tempfile.mkdtemp(prefix="bio_anomaly_dashscope_")
+        video_path = Path(tmp_dir) / "roi_clip.mp4"
+        try:
+            h, w = crop_frames[0].shape[:2]
+            writer = cv2.VideoWriter(
+                str(video_path),
+                cv2.VideoWriter_fourcc(*"mp4v"),
+                6.0,
+                (w, h),
+            )
+            if not writer.isOpened():
+                raise RuntimeError("无法创建临时 ROI 视频文件")
+            for frame in crop_frames:
+                if frame.shape[:2] != (h, w):
+                    frame = cv2.resize(frame, (w, h))
+                writer.write(frame)
+            writer.release()
+            return mllm_client.judge_video_path(str(video_path), BIOLOGICAL_ANOMALY_PROMPT)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    return mllm_client.judge_video_clip(crop_frames, BIOLOGICAL_ANOMALY_PROMPT)
 
 
 def judge_biological_anomaly_mllm(
@@ -42,7 +73,7 @@ def judge_biological_anomaly_mllm(
     crop_frames = [roi["crop"] for roi in rois]
 
     try:
-        result = mllm_client.judge_video_clip(crop_frames, BIOLOGICAL_ANOMALY_PROMPT)
+        result = _judge_rois_with_mllm(crop_frames, mllm_client)
     except Exception:
         return {"skipped": True, "has_anomalies": False, "anomalies": []}
 

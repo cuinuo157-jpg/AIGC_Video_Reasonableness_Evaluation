@@ -30,6 +30,11 @@ class DynamicsDetail:
     subject_perceptual: float | None = None
     scene_type: str = "dynamic"
     interpretation: str = ""
+    mean_magnitude_raw: float = 0.0
+    std_magnitude_raw: float = 0.0
+    mean_coverage_raw: float = 0.0
+    mean_consistency_raw: float = 0.0
+    camera_magnitude_raw: float = 0.0
 
 
 def _sigmoid(value: float, threshold: float, steepness: float = 0.5) -> float:
@@ -40,6 +45,13 @@ def compute_dynamics_score(
     flows: list[tuple[np.ndarray, np.ndarray]],
     camera_magnitude: float = 0.0,
     subject_motion: SubjectMotionDetail | None = None,
+    flow_threshold_dynamic: float = 5.0,
+    flow_threshold_static: float = 2.0,
+    flow_threshold_subject_min: float = 2.0,
+    flow_subject_relief_factor: float = 0.35,
+    coverage_motion_threshold: float = 0.5,
+    temporal_std_threshold: float = 0.5,
+    camera_score_floor: float = 0.25,
 ) -> tuple[float, DynamicsDetail]:
     """从光流序列计算动态度评分。
 
@@ -64,8 +76,8 @@ def compute_dynamics_score(
         mean_mag = float(np.mean(mag))
         frame_magnitudes.append(mean_mag)
 
-        # 空间覆盖率: 运动像素占比 (mag > 1.0 pixel)
-        dynamic_ratio = float(np.mean(mag > 1.0))
+        # 空间覆盖率: 运动像素占比 (mag > configured threshold)
+        dynamic_ratio = float(np.mean(mag > coverage_motion_threshold))
         frame_dynamic_ratios.append(dynamic_ratio)
 
         # 空间一致性: 运动方向标准差 (越小越一致)
@@ -90,27 +102,40 @@ def compute_dynamics_score(
     # 3a. 光流幅度 (有主体信息时用主体运动修正阈值)
     if subject_motion is not None and subject_motion.subject_magnitude > 0:
         # 主体运动幅度作为参考，降低全局阈值要求
-        adjusted_threshold = max(5.0, 15.0 - subject_motion.subject_magnitude * 0.5)
+        adjusted_threshold = max(
+            flow_threshold_subject_min,
+            flow_threshold_dynamic - subject_motion.subject_magnitude * flow_subject_relief_factor,
+        )
         flow_score = float(np.clip(
             _sigmoid(mean_mag, threshold=adjusted_threshold, steepness=0.3), 0, 1
         ))
     elif scene_type == "static":
-        flow_score = float(np.clip(_sigmoid(mean_mag, threshold=5.0, steepness=0.5), 0, 1))
+        flow_score = float(np.clip(
+            _sigmoid(mean_mag, threshold=flow_threshold_static, steepness=0.5), 0, 1
+        ))
     else:
-        flow_score = float(np.clip(_sigmoid(mean_mag, threshold=15.0, steepness=0.3), 0, 1))
+        flow_score = float(np.clip(
+            _sigmoid(mean_mag, threshold=flow_threshold_dynamic, steepness=0.3), 0, 1
+        ))
 
     # 3b. 空间覆盖
     spatial_score = float(np.clip(mean_coverage, 0, 1))
 
     # 3c. 时序变化
-    temporal_score = float(np.clip(_sigmoid(std_mag, threshold=1.0, steepness=1.0), 0, 1))
+    temporal_score = float(np.clip(
+        _sigmoid(std_mag, threshold=temporal_std_threshold, steepness=1.0), 0, 1
+    ))
 
     # 3d. 空间一致性 (方向一致 → 高分 → 可能是相机运动)
     consistency_score = float(np.clip(1.0 - mean_consistency / np.pi, 0, 1))
 
     # 3e. 相机因子
     if camera_magnitude > 0:
-        camera_score = float(np.clip(1.0 - camera_magnitude / (mean_mag + 1e-6), 0, 1))
+        camera_score = float(np.clip(
+            1.0 - camera_magnitude / (mean_mag + 1e-6),
+            camera_score_floor,
+            1.0,
+        ))
     else:
         camera_score = 0.5
 
@@ -201,6 +226,11 @@ def compute_dynamics_score(
         subject_perceptual=subject_score,
         scene_type=scene_type,
         interpretation=f"动态度: {unified:.3f} ({level}), 场景: {scene_type}",
+        mean_magnitude_raw=mean_mag,
+        std_magnitude_raw=std_mag,
+        mean_coverage_raw=mean_coverage,
+        mean_consistency_raw=mean_consistency,
+        camera_magnitude_raw=camera_magnitude,
     )
 
     return unified, detail

@@ -52,6 +52,11 @@ vis_results/
 # Pytest
 .pytest_cache/
 
+# Environment variables
+.env
+.env.local
+.env.*.local
+
 # 构建产物
 dist/
 build/

@@ -24,6 +24,7 @@ class MotionLogicResult:
     smoothness_score: float = 0.0
     naturalness_score: float | None = None
     naturalness_issues: list[str] = field(default_factory=list)
+    naturalness_mllm_result: dict[str, Any] | None = None
     subject_motion_detail: SubjectMotionDetail | None = None
     flow_smoothness_score: float = 0.0
     trajectory_curvature_score: float | None = None
@@ -81,7 +82,16 @@ class MotionLogicAnalyzer:
             pass  # subject_masks 不可用，退回全局模式
 
         dynamics, detail = compute_dynamics_score(
-            flows, camera_magnitude, subject_motion=subject_detail,
+            flows,
+            camera_magnitude,
+            subject_motion=subject_detail,
+            flow_threshold_dynamic=getattr(self.config, "flow_threshold_dynamic", 5.0),
+            flow_threshold_static=getattr(self.config, "flow_threshold_static", 2.0),
+            flow_threshold_subject_min=getattr(self.config, "flow_threshold_subject_min", 2.0),
+            flow_subject_relief_factor=getattr(self.config, "flow_subject_relief_factor", 0.35),
+            coverage_motion_threshold=getattr(self.config, "coverage_motion_threshold", 0.5),
+            temporal_std_threshold=getattr(self.config, "temporal_std_threshold", 0.5),
+            camera_score_floor=getattr(self.config, "camera_score_floor", 0.25),
         )
         flow_smoothness = compute_flow_acceleration_smoothness(flows)
 
@@ -111,6 +121,7 @@ class MotionLogicAnalyzer:
 
         naturalness = None
         issues: list[str] = []
+        naturalness_mllm_result: dict[str, Any] | None = None
 
         if self.config.enable_mllm and self._mllm_client:
             from .naturalness_judge import judge_naturalness_mllm
@@ -118,8 +129,14 @@ class MotionLogicAnalyzer:
             result = judge_naturalness_mllm(
                 hub, self._mllm_client, flows, smoothness
             )
+            naturalness_mllm_result = result
             if not result.get("skipped"):
-                naturalness = 1.0 if result.get("is_natural", True) else 0.3
+                is_natural = result.get("is_natural")
+                if is_natural is None:
+                    is_natural = result.get("is_reasonable")
+                if is_natural is None:
+                    is_natural = True
+                naturalness = 1.0 if is_natural else 0.3
                 issues = result.get("issues", [])
 
         c = self.config
@@ -142,6 +159,7 @@ class MotionLogicAnalyzer:
             smoothness_score=smoothness,
             naturalness_score=naturalness,
             naturalness_issues=issues,
+            naturalness_mllm_result=naturalness_mllm_result,
             subject_motion_detail=subject_detail,
             flow_smoothness_score=flow_smoothness,
             trajectory_curvature_score=trajectory_score,
