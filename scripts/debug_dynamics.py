@@ -782,18 +782,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--enable-mllm", action="store_true", help="启用 MLLM 辅助判定")
     parser.add_argument(
         "--mllm-provider",
-        default="vllm",
+        default="dashscope",
         choices=["vllm", "openai", "anthropic", "dashscope"],
         help="MLLM API 提供方（默认 vllm：OpenAI 兼容本地服务）",
     )
     parser.add_argument(
         "--mllm-model",
-        default="qwen3.5:9b",
+        default="qwen3-vl-8b-thinking",
         help="MLLM 模型名（vllm 默认 qwen3.5:9b；dashscope 可传 qwen3-vl-8b-thinking 等）",
     )
     parser.add_argument(
         "--mllm-api-key",
-        default=os.environ.get("DASHSCOPE_API_KEY", "")
+        default=os.environ.get("DASHSCOPE_API_KEY", "sk-724d2dde4f7948a695e5af01a9a198c2")
         or os.environ.get("VLLM_API_KEY", ""),
         help="API Key（dashscope 必填；vllm 可空，空则使用 not-needed）",
     )
@@ -850,9 +850,9 @@ def _preview_and_save_mllm_frames(
     sample_fps: int,
     max_frames: int,
     save_dir: Path,
-    label: str = "mllm",
+    label: str = "MLLM",
 ) -> dict:
-    """抽取将发送给 VLLM 的帧，打印抽帧统计，并将帧保存到磁盘。"""
+    """抽取将发送给 MLLM (VLLM/DashScope) 的帧，打印抽帧统计，并将帧保存到磁盘。"""
     from src.mllm.vllm_openai_video import extract_frames_jpeg_bytes, subsample_uniform
 
     cap = cv2.VideoCapture(video_path)
@@ -886,7 +886,7 @@ def _preview_and_save_mllm_frames(
     print(f"  视频: {video_path}")
     print(f"  原始: {width}x{height}, fps={video_fps:.1f}, 总帧={total_frames}, 时长={duration_sec:.1f}s")
     print(f"  step=max(1,int({video_fps:.1f}/{sample_fps}))={frame_interval}, 按 {sample_fps}fps 抽取 → {len(raw)} 帧")
-    print(f"  subsample_uniform(max={max_frames}) → 最终送入 VLLM: {len(sampled)} 帧")
+    print(f"  subsample_uniform(max={max_frames}) → 最终送入 {label}: {len(sampled)} 帧")
 
     save_dir.mkdir(parents=True, exist_ok=True)
     for i, frame_bytes in enumerate(sampled):
@@ -895,6 +895,34 @@ def _preview_and_save_mllm_frames(
     print(f"  已保存 {len(sampled)} 张帧到: {save_dir}")
 
     return summary
+
+
+def _log_mllm_prompt_and_response(
+    video_path: str,
+    label_slug: str,
+    title: str,
+    mllm_raw: dict | None,
+    prompt: str,
+    out_root: Path | None = None,
+) -> None:
+    """打印 + 保存 MLLM 提示词与回复。"""
+    if not mllm_raw or mllm_raw.get("skipped"):
+        return
+    out_dir = (out_root or (ROOT / "outputs" / "dynamics")).resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    video_name = Path(video_path).stem
+    payload = {"prompt": prompt, "response": mllm_raw}
+    out_path = out_dir / f"{video_name}_{label_slug}_mllm_prompt_response.json"
+    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    print(f"\n{'='*60}")
+    print(f"[MLLM 调用: {title}]")
+    print(f"{'='*60}")
+    print("[提示词]:")
+    print(prompt)
+    print(f"\n[模型完整回复]:")
+    print(json.dumps(mllm_raw, ensure_ascii=False, indent=2))
+    print(f"\n提示词+回复已保存: {out_path}")
 
 
 def build_mllm_client(args: argparse.Namespace) -> MLLMClient | None:
@@ -1059,31 +1087,42 @@ def main() -> None:
             print(f"  结果JSON已保存: {result_path}")
 
             mllm_raw = getattr(r, "naturalness_mllm_result", None)
-            if mllm_raw and not mllm_raw.get("skipped"):
-                mllm_out = (ROOT / "outputs" / "dynamics")
-                mllm_out.mkdir(parents=True, exist_ok=True)
-                mllm_payload = {"prompt": MOTION_NATURALNESS_PROMPT, "response": mllm_raw}
-                mllm_path = mllm_out / f"{v.stem}_mllm_prompt_response.json"
-                mllm_path.write_text(json.dumps(mllm_payload, ensure_ascii=False, indent=2), encoding="utf-8")
-                print(f"\n{'='*60}")
-                print("[MLLM 调用: 运动自然度判定]")
-                print(f"{'='*60}")
-                print("[提示词]:")
-                print(MOTION_NATURALNESS_PROMPT)
-                print(f"\n[模型完整回复]:")
-                print(json.dumps(mllm_raw, ensure_ascii=False, indent=2))
-                print(f"\n提示词+回复已保存: {mllm_path}")
+            _log_mllm_prompt_and_response(
+                video_path=str(v),
+                label_slug="motion",
+                title="运动自然度判定",
+                mllm_raw=mllm_raw,
+                prompt=MOTION_NATURALNESS_PROMPT,
+                out_root=ROOT / "outputs" / "dynamics",
+            )
         print(f"\n总耗时: {time.time() - t_total:.1f}s")
         return
 
     if args.analysis_mode == "pipeline":
         for v in videos:
             print(f"\n[Pipeline] {v.name}")
+            if args.enable_mllm:
+                _preview_and_save_mllm_frames(
+                    video_path=str(v),
+                    sample_fps=args.mllm_fps,
+                    max_frames=5,
+                    save_dir=ROOT / "outputs" / "dynamics" / f"{v.stem}_pipeline_mllm_frames",
+                    label=f"{args.mllm_provider.upper()} MLLM",
+                )
             report = run_pipeline_analysis(str(v), args, mllm_client)
             print(f"  final_score={report.final_score:.3f}")
             d = report.dimensions.get("motion_logic")
             if d and d.details:
                 print(f"  motion_logic_score={getattr(d.details, 'motion_logic_score', 0.0):.3f}")
+                mllm_raw = getattr(d.details, "naturalness_mllm_result", None)
+                _log_mllm_prompt_and_response(
+                    video_path=str(v),
+                    label_slug="pipeline_motion_logic",
+                    title="Pipeline → MotionLogic MLLM",
+                    mllm_raw=mllm_raw,
+                    prompt=MOTION_NATURALNESS_PROMPT,
+                    out_root=ROOT / "outputs" / "dynamics",
+                )
         print(f"\n总耗时: {time.time() - t_total:.1f}s")
         return
 
