@@ -1,183 +1,238 @@
 # AIGC Video Reasonableness Evaluation
 
-一套针对 **AIGC（生成式视频）合理性校验** 的多模态分析框架，涵盖结构时序一致性、运动强度、场景真实度、感知质量等多个维度，并提供统一的脚本、配置与可视化能力，便于快速构建自动化评测流水线。
+AIGC 生成式视频合理性多维度评测框架。  
+围绕 **身份一致性、表情自然度、生物特征异常、运动逻辑、物理常识、背景一致性、时间一致性、感知质量** 等维度进行综合打分与异常定位，支持 FeatureHub 共享特征缓存、可选 MLLM/VLM 判定、统一流水线输出。
 
 ---
 
-## 功能概览
+## README 更新说明（基于 plan.md + 提交记录）
 
-- 🧠 **Temporal Coherence (TCS-lite)**：检测目标异常出现/消失，支持边缘进出、尺度变化与检测断点排除。
-- 📈 **Motion Logic**：基于光流、相机补偿、主体分割的动态度评估，支持主体可感知运动评分与可视化。
-- 👁️ **Perceptual Quality**：借助 Q-Align 视频质量模型，对模糊等感知缺陷进行检测与报告生成。
-- 🎬 **Scene Realism & VLM Reasoning**：面向场景真实性、跨模态一致性等维度的扩展能力（脚本/模块化接口预留）。
-- 🛠️ **统一工具链**：脚本化的数据准备、批量执行、可视化与结果汇总；模块化配置，易于集成到生产/研究流程。
+当前 README 已按 `plan.md`（2026-04-09）和近期提交记录同步，主要修正：
+
+- 补齐当前主线模块：`face_identity / expression_naturalness / biological_anomaly / motion_logic / physics_consistency / background_consistency / temporal_coherence / perceptual_quality / evaluation_pipeline`
+- 移除历史/不准确描述（如 `scene_realism`、`fusion_engine`、`video_io` 等根目录模块说明）
+- 对齐现有脚本入口（`debug_physics.py`、`eval_video_reasonableness_dashscope.py`、`run_4gpu_batch.sh` 等）
+- 对齐近期能力更新：D4 动态度脚本参数与输出增强、D5 VLM 判定链路、MLLM 调用日志与抽帧信息输出
+
+---
+
+## 当前能力状态（摘自 plan.md）
+
+| 模块 | 状态 | 代码路径 |
+| --- | --- | --- |
+| FeatureHub 共享特征层 | 已完成 | `src/feature_hub/` |
+| MLLM 统一调用层 | 已完成 | `src/mllm/` |
+| D1 人脸身份一致性 | 已完成 | `src/face_identity/` |
+| D2 表情自然度 | 已完成 | `src/expression_naturalness/` |
+| D3 生物特征异常（三级检测） | 已完成 | `src/biological_anomaly/` |
+| D4 运动逻辑与平滑度 | 已完成 | `src/motion_logic/` |
+| D5 物理常识一致性（VLM+CoT） | 已完成 | `src/physics_consistency/` |
+| D6 背景一致性 | 已完成 | `src/background_consistency/` |
+| D7 时间一致性（TCS-lite） | 已完成 | `src/temporal_coherence/` |
+| 感知质量 | 已接入流水线 | `src/perceptual_quality/` |
+| 统一评测流水线 | 已完成 | `src/evaluation_pipeline.py` |
+
+> 详细进展、设计与下一步计划请查看 `plan.md`。
 
 ---
 
 ## 目录结构
 
-```
+```text
 AIGC_Video_Reasonableness_Evaluation
-├─ data/                   # 示例数据与测试视频（需按需放置）
-├─ outputs/                # 任务结果输出目录（JSON、CSV、可视化图表等）
-├─ scripts/                # 命令行脚本入口（当前以 debug_* 为主）
-│  ├─ debug_dynamics.py
-│  ├─ debug_temporal_coherence.py
-│  ├─ debug_expression.py
-│  └─ ...
-├─ src/                    # 核心源码（按维度模块拆分）
-│  ├─ motion_logic/
-│  ├─ temporal_coherence/
-│  ├─ physics_consistency/
-│  ├─ background_consistency/
-│  ├─ perceptual_quality/
-│  ├─ feature_hub/
-│  └─ ...
-├─ third_party/            # 外部依赖仓库（Grounded-SAM-2、CoTracker、Q-Align、RAFT 等）
-└─ README.md               # 项目说明（本文档）
+├─ src/
+│  ├─ feature_hub/              # 共享特征层（光流/深度/人脸/分割/追踪）
+│  ├─ face_identity/            # D1 人脸身份一致性
+│  ├─ expression_naturalness/   # D2 表情自然度
+│  ├─ biological_anomaly/       # D3 生物特征异常（三级检测）
+│  ├─ motion_logic/             # D4 运动逻辑与平滑度
+│  ├─ physics_consistency/      # D5 物理常识一致性
+│  ├─ background_consistency/   # D6 背景一致性
+│  ├─ temporal_coherence/       # D7 时间一致性（TCS-lite）
+│  ├─ perceptual_quality/       # 感知质量
+│  ├─ mllm/                     # MLLM/VLM 客户端与提示词
+│  └─ evaluation_pipeline.py    # 统一评测入口
+├─ scripts/                     # 调试与评测脚本入口
+├─ tests/                       # 单元测试
+├─ data/                        # 示例数据（自备）
+├─ outputs/                     # 输出目录
+├─ third_party/                 # 第三方模型与依赖
+├─ plan.md                      # 当前阶段计划与进展
+└─ README.md
 ```
-
-各子模块在 `src/<module>/README.md` 中提供了更细化的说明与设计思路。
 
 ---
 
 ## 环境准备
 
-建议使用 **Python 3.10+**，并预先准备 GPU（CUDA）环境以获得最佳性能。
+推荐 Python 3.10+。
 
-1. 创建虚拟环境并安装依赖：
+### 方式一：使用 uv（推荐）
 
-   ```bash
-   conda create -n aigc_eval python=3.10
-   conda activate aigc_eval
-   pip install -r third_party/requirements.txt  # 包含 Grounded-SAM-2 依赖
-   ```
-2. 编译/安装第三方项目（若使用）：
+```bash
+uv sync
+```
 
-   - **Co-Tracker**：参考 `third_party/co-tracker/README.md` 安装依赖与权重。
-   - **Grounded-SAM-2 / Segment Anything / Grounding DINO**：按其官方说明准备模型文件。
-   - **Q-Align**：需要下载 `q-future/one-align` 权重至 `.cache/q-future/one-align`。
-   - **RAFT**：将 `raft-things.pth` 等权重放置在 `.cache/`，并根据需要编译 CUDA 扩展。
-3. 将模型权重放置到项目根目录 `.cache/` 下，常见示例：
+若需要 DashScope 视频评测能力：
 
-   ```
-   .cache/
-   ├─ groundingdino_swinb_cogcoor.pth
-   ├─ sam_vit_h_4b8939.pth
-   ├─ scaled_offline.pth                # CoTracker
-   ├─ raft-things.pth                   # RAFT
-   ├─ q-future/one-align/               # Q-Align
-   └─ google-bert/bert-base-uncased/    # Grounding DINO 所需
-   ```
+```bash
+uv sync --extra dashscope
+```
+
+### 方式二：使用 pip
+
+```bash
+pip install -r requirements.txt
+```
+
+### 环境变量
+
+复制并编辑 `.env.example`：
+
+```bash
+cp .env.example .env
+```
+
+常用变量：
+
+- `DASHSCOPE_API_KEY`：DashScope 视频 VLM 所需
+- `DASHSCOPE_BASE_URL`：可选（国际区等）
+- `VLLM_OPENAI_BASE_URL` / `VLLM_API_KEY`：本地 OpenAI 兼容 VLLM 服务
 
 ---
 
-## 快速上手
+## 快速开始（按模块调试）
 
-### 1. 时序连贯性分析（TCS-lite）
+> 以下命令均为当前仓库已存在脚本。
 
-```bash
-python scripts/debug_temporal_coherence.py \
-  --input data/videos/sample.mp4 \
-  --device cuda \
-  --save-det-vis
-```
-
-- 结果默认保存至 `outputs/temporal_coherence/<video>_tcs.json`。
-- 当前实现为工程化 `TCS-lite`，基于 GroundingDINO 检测 + 轨迹关联规则。
-- 使用 `--save-det-vis` 时会额外输出关键帧检测框可视化与语义：
-  - `outputs/temporal_coherence/<video>_detections/*.jpg`
-  - `outputs/temporal_coherence/<video>_detections/<video>_detections.json`
-- 若需严格离线运行（不触发任何在线下载），可附加 `--offline`（需本地 `.cache` 资源完整）。
-
-### 2. 动态度分析
+### 1) D4 运动逻辑
 
 ```bash
 python scripts/debug_dynamics.py \
-  --input data/videos/sample.mp4 \
+  --input data/sample.mp4 \
   --device cuda \
   --method raft \
   --subject \
   --save-vis
 ```
 
-- 光流/主体分割可视化输出到 `outputs/dynamics/`。
+可选 `--enable-mllm` 启用 MLLM 判定。近期已增强抽帧信息、耗时统计、MLLM 输入输出日志。
 
-### 3. 模糊检测（感知质量）
+### 2) D5 物理常识一致性
 
 ```bash
-python scripts/perceptual_quality/run_blur_detection.py \
-  --video path/to/video.mp4 \
-  --output-dir outputs/perceptual_quality/blur \
-  --enable-visual-report
+python scripts/debug_physics.py \
+  --input data/sample.mp4 \
+  --device cuda \
+  --enable-mllm
 ```
 
-- 会调用 Q-Align 质量模型计算滑动窗口分数，输出 JSON/CSV/可视化图表。
-- `outputs/perceptual_quality/blur` 下包含详细报告与统计。
+默认可走本地 OpenAI 兼容 VLLM；也可通过 `--mllm-provider dashscope` 切换百炼。
+
+### 3) D3 生物特征异常
+
+```bash
+python scripts/debug_bio_anomaly.py \
+  --input data/sample.mp4 \
+  --device cuda \
+  --save-vis
+```
+
+### 4) D7 时间一致性（TCS-lite）
+
+```bash
+python scripts/debug_temporal_coherence.py \
+  --input data/sample.mp4 \
+  --device cuda \
+  --save-det-vis
+```
+
+### 5) 其他模块
+
+```bash
+python scripts/debug_expression.py --input data/sample.mp4 --device cuda
+python scripts/debug_face_identity.py --input data/sample.mp4 --device cuda
+python scripts/debug_iris_tracking.py --input data/sample.mp4 --device cuda --save-vis
+```
+
+### 6) DashScope 视频合理性评测脚本
+
+```bash
+python scripts/eval_video_reasonableness_dashscope.py \
+  --video data/sample.mp4 \
+  --model qwen3-vl-8b-thinking
+```
 
 ---
 
-## 核心模块简介
+## 统一流水线（代码调用）
 
-| 模块                       | 描述                                                                           | 主要依赖                                               |
-| -------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------ |
-| `temporal_coherence`   | 检测目标出现/消失时序一致性，输出异常事件与 TCS 分数                             | GroundingDINO、SAM2、OpenCV                             |
-| `motion_logic`         | 动态度与平滑度评估，支持主体感知运动评分                                         | RAFT、OpenCV、SAM2、GroundingDINO                      |
-| `aux_motion_intensity`   | 历史模块（已迁移），保留兼容参考                                                | OpenCV (Farneback/TV-L1)、RAFT                         |
-| `aux_motion_intensity_2` | 基于 Grounded-SAM + CoTracker 的 PAS 分析，支持场景分类/可视化                 | Grounded-SAM-2、CoTracker、Torch                       |
-| `perceptual_quality`     | 使用 Q-Align 质量模型检测模糊、生成报告                                        | Q-Align、Decord、Matplotlib                            |
-| `scene_realism`          | 场景真实度相关接口预留模块                                                     | （按需扩展）                                           |
-| `vlm_reasoning`          | 大语言/视觉模型联合推理接口                                                    | （按需扩展）                                           |
-| `fusion_engine`          | 多模态结果融合与决策逻辑                                                       | 自研                                                   |
-| `video_io`               | 通用视频读取、帧抽样、缓存工具                                                 | OpenCV、Decord                                         |
+统一入口为 `src/evaluation_pipeline.py` 的 `EvaluationPipeline.evaluate(video_path)`。
 
-每个子目录均提供 README / QUICKSTART / INTEGRATION 文档说明用法与设计。
+示例：
 
----
+```python
+from src.evaluation_pipeline import EvaluationPipeline
 
-## 数据与输出
+pipeline = EvaluationPipeline(device="cuda", enable_mllm=False)
+report = pipeline.evaluate("data/sample.mp4")
 
-- **输入数据**：项目未直接提供数据，可自行将测试视频置于 `data/` 或任意路径后通过 CLI 指定。
-- **输出内容**：默认写入 `outputs/` 下，包含 JSON 结果、图表、统计报表等；路径可通过 CLI/配置覆盖。
-- **可视化**：结构可视化（SAM2 分割覆盖）、CoTracker 轨迹视频、模糊检测曲线/报告等均可启用。
+print(report.final_score)
+print(report.active_dimensions)
+```
+
+说明：
+
+- 默认会对可用维度进行评测，并对不可用维度做跳过处理
+- 对参与维度执行权重归一化后得到 `final_score`
+- 各维度详细结果保存在 `report.dimensions`
 
 ---
 
-## 自定义与扩展
+## 批量执行（Dynamics 多卡）
 
-- **配置管理**：各模块在 `src/<module>/config.py` 或相关 README 中给出可覆盖字段；可通过 YAML / CLI 参数覆写。
-- **模型替换**：如需替换成其他检测或分割模型，可在对应模块里扩展 `*_Analyzer`、`DetectionEngine` 实现。
-- **融合策略**：`src/fusion_engine` 中的 `FusionDecisionEngine` 支持自定义多模态融合逻辑与阈值。
-- **脚本扩展**：`scripts/` 目录按功能划分，推荐在对应子目录新增脚本，保持 CLI 参数风格一致。
+项目提供 `scripts/run_4gpu_batch.sh`（名称固定，GPU 数量可配置）：
 
----
+```bash
+bash scripts/run_4gpu_batch.sh \
+  --input-dir /data/videos \
+  --gpus 0,1,2,3 \
+  --method raft \
+  --subject \
+  --offline \
+  --save-vis
+```
 
-## 常见问题
-
-1. **模型权重无法找到 / 加载失败**
-
-   - 确认 `.cache/` 目录下存在相应文件，路径区分大小写；可通过 CLI 直接指定模型路径进行覆盖。
-2. **CUDA 内存不足**
-
-   - 降低批大小（`--batch-size`）、减少滑动窗口长度，或改用 CPU 模式（性能会下降）。
-3. **第三方依赖安装困难**
-
-   - 建议参考各第三方仓库 README；如需快速体验，可先关闭相关功能（例如禁用 CoTracker 验证）。
-4. **生成的可视化缺失**
-
-   - 确认命令行参数已开启对应选项，并检查输出目录是否可写（Windows 下注意权限与路径长度）。
-5. **时序连贯性显示不可用（skip_reason=grounding dino unavailable）**
-
-   - 确认当前运行环境已安装 `addict` 等 GroundingDINO 依赖，并检查 `.cache` 中权重与 BERT 目录是否存在。
+输出位于 `outputs/dynamics_batch/<timestamp>/`。
 
 ---
 
-## 致谢与版权
+## 开发与测试
 
-项目中包含多个开源子模块，版权归原作者所有。使用前请仔细阅读 `third_party` 目录下各项目的 License 与使用规范：
+```bash
+pytest tests/ -v --tb=short
+ruff check src/ scripts/
+ruff format src/ scripts/
+```
 
-- [Grounded-SAM-2](https://github.com/IDEA-Research/Grounded-SAM-2)
-- [Co-Tracker](https://github.com/facebookresearch/co-tracker)
-- [Q-Align](https://github.com/VQAssessment/Q-Align)
-- [RAFT](https://github.com/princeton-vl/RAFT)
-- 以及其他随附库与模型。
+---
+
+## 相关文档
+
+- 进展计划：`plan.md`
+- 源码说明：`src/README.md`
+- 脚本说明：`scripts/README.md`
+- 历史统一流水线文档：`scripts/unified_pipeline_README.md`（已标注历史状态）
+
+---
+
+## 致谢
+
+项目集成/参考了多个开源能力，详见 `third_party/` 目录与各自许可证。常见依赖包括：
+
+- Grounded-SAM-2
+- Co-Tracker
+- GroundingDINO
+- RAFT
+- Q-Align
+- InsightFace / MediaPipe / Py-Feat 等
