@@ -51,6 +51,8 @@ vis_results/
 
 # 运行分析结果（所有 JSON、可视化图、中间产物均在此目录生成）
 outputs/
+outputs1/
+scripts/outputs/
 
 # 测试视频数据（不入库）
 data/
@@ -68,7 +70,7 @@ data/
 *.mp3
 
 # 临时错误日志
-err_log*.ytxt
+*.ytxt
 
 # Pytest
 .pytest_cache/

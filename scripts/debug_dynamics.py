@@ -776,7 +776,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--mllm-api-key",
-        default=os.environ.get("DASHSCOPE_API_KEY", "sk-724d2dde4f7948a695e5af01a9a198c2")
+        default=os.environ.get("DASHSCOPE_API_KEY", "")
         or os.environ.get("VLLM_API_KEY", ""),
         help="API Key（dashscope 必填；vllm 可空，空则使用 not-needed）",
     )
