@@ -59,6 +59,7 @@ from src.biological_anomaly.analyzer import _collect_suspicious
 from src.biological_anomaly.prompts import BIOLOGICAL_ANOMALY_PROMPT
 from src.mllm.client import MLLMClient
 from src.mllm.config import MLLMConfig
+from src.mllm.dotenv_loader import load_dotenv
 
 
 # ── 0. MLLM 抽帧预览辅助 ─────────────────────────────────
@@ -130,24 +131,6 @@ def _preview_and_save_roi_crops(
 
 # ── 1. 视频读取 ──────────────────────────────────────────
 
-
-def _load_repo_dotenv(repo_root: Path = ROOT) -> None:
-    """从仓库根 .env 注入环境变量（不覆盖已存在项）。"""
-    path = repo_root / ".env"
-    if not path.is_file():
-        return
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, val = line.partition("=")
-        key = key.strip()
-        if not key or key in os.environ:
-            continue
-        val = val.strip()
-        if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
-            val = val[1:-1]
-        os.environ[key] = val
 
 
 def load_frames(video_path: str, sample_rate: int = 1) -> tuple[list[np.ndarray], float]:
@@ -866,7 +849,7 @@ def save_visualization(
 
 
 def main():
-    _load_repo_dotenv()
+    load_dotenv()
     parser = argparse.ArgumentParser(description="生物特征异常三级检测调试脚本")
     parser.add_argument("--input", required=True, help="视频文件路径")
     parser.add_argument("--device", default="cpu", help="推理设备 (cuda/cpu)")
@@ -875,14 +858,14 @@ def main():
     parser.add_argument("--no-mllm", action="store_true", help="禁用 Level 3 MLLM")
     parser.add_argument(
         "--mllm-provider",
-        default="vllm",
+        default=os.environ.get("MLLM_PROVIDER", "vllm"),
         choices=["vllm", "openai", "anthropic", "dashscope"],
-        help="MLLM API 提供方（默认 vllm：OpenAI 兼容本地服务）",
+        help="MLLM API 提供方（默认 vllm；可通过 MLLM_PROVIDER 环境变量配置）",
     )
     parser.add_argument(
         "--mllm-model",
-        default="qwen3.5:9b",
-        help="MLLM 模型名（dashscope 可传 qwen3-vl-8b-thinking 等）",
+        default=os.environ.get("MLLM_MODEL", "qwen3.5:9b"),
+        help="MLLM 模型名（默认 qwen3.5:9b；通过 MLLM_MODEL 环境变量配置）",
     )
     parser.add_argument(
         "--mllm-api-key",
@@ -899,8 +882,8 @@ def main():
     parser.add_argument(
         "--mllm-fps",
         type=int,
-        default=2,
-        help="视频路径模式抽帧 fps（dashscope / vllm）",
+        default=int(os.environ.get("MLLM_FPS", "2")),
+        help="视频路径模式抽帧 fps（通过 MLLM_FPS 环境变量配置）",
     )
     parser.add_argument("--mllm-max-crops", type=int, default=8, help="Level 3 最大 ROI 裁剪数")
     args = parser.parse_args()

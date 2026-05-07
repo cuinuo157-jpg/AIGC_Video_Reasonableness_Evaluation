@@ -30,6 +30,7 @@ from src.feature_hub.extractors.subject_segmentation import (
 from src.temporal_coherence.analyzer import TemporalCoherenceAnalyzer
 from src.mllm.config import MLLMConfig
 from src.mllm.client import MLLMClient
+from src.mllm.dotenv_loader import load_dotenv
 
 
 TEMPORAL_ANOMALY_CONFIRM_PROMPT = """你是一个视频时序一致性分析专家。视频中检测到以下疑似异常事件，请逐一判断是否为真实的 AI 生成异常。
@@ -78,23 +79,6 @@ TEMPORAL_ANOMALY_DIRECT_PROMPT = """你是一个视频时序一致性分析专�
     ]
 }}"""
 
-
-def _load_repo_dotenv() -> None:
-    path = ROOT / ".env"
-    if not path.is_file():
-        return
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, val = line.partition("=")
-        key = key.strip()
-        if not key or key in os.environ:
-            continue
-        val = val.strip()
-        if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
-            val = val[1:-1]
-        os.environ[key] = val
 
 
 def _preview_and_save_mllm_frames(
@@ -429,14 +413,14 @@ def main() -> None:
     )
     parser.add_argument(
         "--mllm-provider",
-        default="vllm",
+        default=os.environ.get("MLLM_PROVIDER", "vllm"),
         choices=["vllm", "openai", "anthropic", "dashscope"],
-        help="MLLM 提供方（默认 vllm：OpenAI 兼容本地服务）",
+        help="MLLM 提供方（默认 vllm；可通过 MLLM_PROVIDER 环境变量配置）",
     )
     parser.add_argument(
         "--mllm-model",
-        default="qwen3.5:9b",
-        help="模型名（vllm 默认 qwen3.5:9b；dashscope 可传 qwen3-vl-8b-thinking 等）",
+        default=os.environ.get("MLLM_MODEL", "qwen3.5:9b"),
+        help="模型名（默认 qwen3.5:9b；通过 MLLM_MODEL 环境变量配置）",
     )
     parser.add_argument(
         "--mllm-api-key",
@@ -453,8 +437,8 @@ def main() -> None:
     parser.add_argument(
         "--mllm-fps",
         type=int,
-        default=2,
-        help="judge_video_path 抽帧 fps（dashscope / vllm）",
+        default=int(os.environ.get("MLLM_FPS", "2")),
+        help="judge_video_path 抽帧 fps（通过 MLLM_FPS 环境变量配置）",
     )
     parser.add_argument(
         "--vlm-mode",
@@ -468,7 +452,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    _load_repo_dotenv()
+    load_dotenv()
 
     video_path = Path(args.input)
     if not video_path.exists():

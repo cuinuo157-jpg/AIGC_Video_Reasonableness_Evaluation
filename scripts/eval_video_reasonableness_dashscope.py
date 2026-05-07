@@ -44,27 +44,10 @@ from src.mllm.dashscope_video_reasonableness import (
     extract_frame_paths,
     parse_json_from_model_text,
 )
+from src.mllm.dotenv_loader import load_dotenv
 
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "outputs" / "vlm_reasonableness_dashscope"
 
-
-def _load_repo_dotenv() -> None:
-    """从仓库根 .env 注入环境变量（不覆盖已存在项）。"""
-    path = REPO_ROOT / ".env"
-    if not path.is_file():
-        return
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, val = line.partition("=")
-        key = key.strip()
-        if not key or key in os.environ:
-            continue
-        val = val.strip()
-        if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
-            val = val[1:-1]
-        os.environ[key] = val
 
 
 def _ensure_dashscope():
@@ -197,7 +180,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
-    _load_repo_dotenv()
+    load_dotenv()
     args = parse_args(argv)
     if not args.api_key.strip():
         print("错误: 请设置环境变量 DASHSCOPE_API_KEY 或使用 --api-key", file=sys.stderr)

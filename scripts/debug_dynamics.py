@@ -47,6 +47,7 @@ from src.feature_hub.hub import FeatureHub
 from src.feature_hub.extractors.subject_segmentation import SubjectSegmentationResult
 from src.mllm.client import MLLMClient
 from src.mllm.config import MLLMConfig
+from src.mllm.dotenv_loader import load_dotenv
 from src.mllm.prompts import MOTION_NATURALNESS_PROMPT
 from src.motion_logic.analyzer import MotionLogicAnalyzer
 from src.motion_logic.config import MotionLogicConfig
@@ -60,24 +61,6 @@ from src.motion_logic.trajectory_curvature_scorer import (
     compute_trajectory_curvature_smoothness,
 )
 
-
-def _load_repo_dotenv(repo_root: Path = ROOT) -> None:
-    """从仓库根 .env 注入环境变量（不覆盖已存在项）。"""
-    path = repo_root / ".env"
-    if not path.is_file():
-        return
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, val = line.partition("=")
-        key = key.strip()
-        if not key or key in os.environ:
-            continue
-        val = val.strip()
-        if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
-            val = val[1:-1]
-        os.environ[key] = val
 
 
 # ── 光流提取 ─────────────────────────────────────────────────
@@ -782,14 +765,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--enable-mllm", action="store_true", help="启用 MLLM 辅助判定")
     parser.add_argument(
         "--mllm-provider",
-        default="dashscope",
+        default=os.environ.get("MLLM_PROVIDER", "dashscope"),
         choices=["vllm", "openai", "anthropic", "dashscope"],
-        help="MLLM API 提供方（默认 vllm：OpenAI 兼容本地服务）",
+        help="MLLM API 提供方（默认 dashscope；可通过 MLLM_PROVIDER 环境变量配置）",
     )
     parser.add_argument(
         "--mllm-model",
-        default="qwen3-vl-8b-thinking",
-        help="MLLM 模型名（vllm 默认 qwen3.5:9b；dashscope 可传 qwen3-vl-8b-thinking 等）",
+        default=os.environ.get("MLLM_MODEL", "qwen3-vl-8b-thinking"),
+        help="MLLM 模型名（默认 qwen3-vl-8b-thinking；通过 MLLM_MODEL 环境变量配置）",
     )
     parser.add_argument(
         "--mllm-api-key",
@@ -806,8 +789,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--mllm-fps",
         type=int,
-        default=2,
-        help="视频路径模式抽帧 fps（dashscope / vllm 的 judge_video_path 均使用）",
+        default=int(os.environ.get("MLLM_FPS", "2")),
+        help="视频路径模式抽帧 fps（通过 MLLM_FPS 环境变量配置）",
     )
     parser.add_argument(
         "--mllm-smoothness-threshold",
@@ -1039,7 +1022,7 @@ def save_motion_result_json(
 
 
 def main() -> None:
-    _load_repo_dotenv()
+    load_dotenv()
     args = parse_args()
     t_total = time.time()
 
