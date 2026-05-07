@@ -49,6 +49,27 @@ vis_results/
 *分析.md
 *对比*.md
 
+# 运行分析结果（所有 JSON、可视化图、中间产物均在此目录生成）
+outputs/
+
+# 测试视频数据（不入库）
+data/
+
+# 二进制/数据文件（非代码）
+*.pkl
+*.npz
+*.npy
+*.mat
+*.zip
+*.tar
+*.gz
+*.tar.gz
+*.wav
+*.mp3
+
+# 临时错误日志
+err_log*.ytxt
+
 # Pytest
 .pytest_cache/
 
