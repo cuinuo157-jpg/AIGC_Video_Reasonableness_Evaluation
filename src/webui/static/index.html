@@ -98,7 +98,7 @@
       <section class="panel status-panel">
         <div class="panel-head">
           <h2>运行状态</h2>
-          <p>分析执行期间会显示当前状态和错误信息。</p>
+          <p>分析执行期间会显示当前状态、结果文件路径与实时日志。</p>
         </div>
         <div id="status-card" class="status-card idle">
           <div class="status-indicator"></div>
@@ -121,6 +121,29 @@
             <span class="info-v">共享取帧、限帧、缩放、并发执行</span>
           </div>
         </div>
+        <div class="artifact-block">
+          <div class="artifact-head">
+            <h3>产物路径</h3>
+            <button type="button" id="clear-logs" class="mini-btn">清空日志视图</button>
+          </div>
+          <div class="artifact-list">
+            <div class="artifact-item">
+              <span class="artifact-k">结果 JSON</span>
+              <code id="result-path">-</code>
+            </div>
+            <div class="artifact-item">
+              <span class="artifact-k">日志文件</span>
+              <code id="log-path">-</code>
+            </div>
+          </div>
+        </div>
+        <div class="log-console-wrap">
+          <div class="artifact-head">
+            <h3>实时终端日志</h3>
+            <span id="log-meta" class="log-meta">等待任务启动</span>
+          </div>
+          <pre id="log-console" class="log-console"></pre>
+        </div>
       </section>
     </main>
 
@@ -140,6 +163,7 @@
             </div>
             <div class="score-meta" id="score-meta"></div>
           </div>
+          <div id="artifact-ribbon" class="artifact-ribbon"></div>
         </div>
 
         <div class="panel summary-panel">

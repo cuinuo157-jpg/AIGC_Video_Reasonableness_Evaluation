@@ -1,6 +1,10 @@
 const state = {
   config: null,
   scope: "anomaly",
+  activeJobId: null,
+  logOffset: 0,
+  pollTimer: null,
+  pollInFlight: false,
 };
 
 const scopeOptions = document.getElementById("scope-options");
@@ -10,6 +14,8 @@ const statusCard = document.getElementById("status-card");
 const statusTitle = document.getElementById("status-title");
 const statusText = document.getElementById("status-text");
 const fillDemoButton = document.getElementById("fill-demo");
+const clearLogsButton = document.getElementById("clear-logs");
+const submitButton = form.querySelector('button[type="submit"]');
 const resultsPanel = document.getElementById("results-panel");
 const resultVideo = document.getElementById("result-video");
 const finalScoreValue = document.getElementById("final-score-value");
@@ -18,11 +24,80 @@ const scoreMeta = document.getElementById("score-meta");
 const summaryGrid = document.getElementById("summary-grid");
 const dimensionCards = document.getElementById("dimension-cards");
 const dimensionTemplate = document.getElementById("dimension-card-template");
+const resultPath = document.getElementById("result-path");
+const logPath = document.getElementById("log-path");
+const logConsole = document.getElementById("log-console");
+const logMeta = document.getElementById("log-meta");
+const artifactRibbon = document.getElementById("artifact-ribbon");
 
 function setStatus(mode, title, text) {
   statusCard.className = `status-card ${mode}`;
   statusTitle.textContent = title;
   statusText.textContent = text;
+}
+
+function resetArtifacts() {
+  resultPath.textContent = "-";
+  logPath.textContent = "-";
+  resultPath.title = "";
+  logPath.title = "";
+  artifactRibbon.innerHTML = "";
+}
+
+function appendLogLines(lines) {
+  if (!lines || lines.length === 0) {
+    return;
+  }
+  const prefix = logConsole.textContent ? "\n" : "";
+  logConsole.textContent += `${prefix}${lines.join("\n")}`;
+  logConsole.scrollTop = logConsole.scrollHeight;
+}
+
+function clearLogConsole() {
+  logConsole.textContent = "";
+  logMeta.textContent = "日志视图已清空";
+}
+
+function stopPolling() {
+  if (state.pollTimer) {
+    clearTimeout(state.pollTimer);
+    state.pollTimer = null;
+  }
+  state.pollInFlight = false;
+}
+
+function setSubmitting(isSubmitting) {
+  submitButton.disabled = isSubmitting;
+  submitButton.textContent = isSubmitting ? "分析进行中..." : "开始分析";
+}
+
+function isImmediateResultResponse(data) {
+  return Boolean(data) && Array.isArray(data.dimensions) && Object.prototype.hasOwnProperty.call(data, "final_score");
+}
+
+function scheduleNextPoll(delay = 800) {
+  if (!state.activeJobId) {
+    return;
+  }
+  state.pollTimer = setTimeout(async () => {
+    if (state.pollInFlight) {
+      scheduleNextPoll(500);
+      return;
+    }
+    state.pollInFlight = true;
+    try {
+      await runPollingCycle();
+      if (state.activeJobId) {
+        scheduleNextPoll();
+      }
+    } catch (error) {
+      stopPolling();
+      setStatus("error", "轮询失败", error.message || "无法获取任务状态");
+      setSubmitting(false);
+    } finally {
+      state.pollInFlight = false;
+    }
+  }, delay);
 }
 
 function renderScopeOptions() {
@@ -124,6 +199,13 @@ function renderEvent(event) {
   return item;
 }
 
+function renderArtifactChip(label, value) {
+  const chip = document.createElement("div");
+  chip.className = "artifact-chip";
+  chip.innerHTML = `<span>${label}</span><code>${value}</code>`;
+  return chip;
+}
+
 function renderResults(data) {
   resultsPanel.classList.remove("hidden");
   resultVideo.textContent = `${data.video_name} · ${data.scope === "anomaly" ? "五类异常" : "全量维度"}`;
@@ -131,12 +213,26 @@ function renderResults(data) {
   finalScoreValue.textContent = finalScore.toFixed(3);
   finalScoreRing.style.setProperty("--ratio", `${Math.round(finalScore * 360)}deg`);
 
+  resultPath.textContent = data.result_json_path || "-";
+  logPath.textContent = data.log_path || "-";
+  resultPath.title = data.result_json_path || "";
+  logPath.title = data.log_path || "";
+
+  artifactRibbon.innerHTML = "";
+  if (data.result_json_path) {
+    artifactRibbon.appendChild(renderArtifactChip("结果", data.result_json_path));
+  }
+  if (data.log_path) {
+    artifactRibbon.appendChild(renderArtifactChip("日志", data.log_path));
+  }
+
   scoreMeta.innerHTML = "";
   [
     `耗时 ${data.elapsed_sec.toFixed(2)}s`,
     `设备 ${data.device}`,
     `活跃维度 ${data.active_dimensions.length}/${data.selected_dimensions.length}`,
     `采样步长 ${data.video_processing.sample_stride} / 最大帧 ${data.video_processing.max_frames ?? "不限"}`,
+    `并发 ${data.video_processing.parallel ? "开启" : "关闭"} / worker ${data.video_processing.max_workers ?? "auto"}`,
   ].forEach((text) => {
     const chip = document.createElement("div");
     chip.className = "meta-chip";
@@ -151,6 +247,8 @@ function renderResults(data) {
   summaryGrid.appendChild(renderSummaryItem("最弱维度", data.summary.worst_dimension || "-"));
   summaryGrid.appendChild(renderSummaryItem("最佳分数", data.summary.best_score != null ? data.summary.best_score.toFixed(3) : "-"));
   summaryGrid.appendChild(renderSummaryItem("最弱分数", data.summary.worst_score != null ? data.summary.worst_score.toFixed(3) : "-"));
+  summaryGrid.appendChild(renderSummaryItem("源视频", data.video_name));
+  summaryGrid.appendChild(renderSummaryItem("结果路径", data.result_json_path ? "已生成" : "未写入"));
 
   dimensionCards.innerHTML = "";
   data.dimensions.forEach((dimension) => {
@@ -210,10 +308,79 @@ async function fetchConfig() {
   fillDemo();
 }
 
+async function pollJobLogs() {
+  if (!state.activeJobId) {
+    return;
+  }
+  const response = await fetch(`/api/jobs/${state.activeJobId}/logs?offset=${state.logOffset}`);
+  if (!response.ok) {
+    throw new Error("日志读取失败");
+  }
+  const data = await response.json();
+  appendLogLines(data.lines);
+  state.logOffset = data.next_offset;
+  logMeta.textContent = data.completed
+    ? `日志已完成，共 ${data.next_offset} 行`
+    : `实时更新中，已接收 ${data.next_offset} 行`;
+}
+
+async function pollJobStatus() {
+  if (!state.activeJobId) {
+    return;
+  }
+  const response = await fetch(`/api/jobs/${state.activeJobId}`);
+  if (!response.ok) {
+    throw new Error("状态读取失败");
+  }
+  const data = await response.json();
+  if (data.result_json_path) {
+    resultPath.textContent = data.result_json_path;
+    resultPath.title = data.result_json_path;
+  }
+  if (data.log_path) {
+    logPath.textContent = data.log_path;
+    logPath.title = data.log_path;
+  }
+
+  if (data.status === "completed" && data.result) {
+    stopPolling();
+    await pollJobLogs();
+    state.activeJobId = null;
+    renderResults(data.result);
+    setStatus("success", "分析完成", `已完成 ${data.result.video_name} 的评测，综合分 ${data.result.final_score.toFixed(3)}。`);
+    setSubmitting(false);
+  } else if (data.status === "failed") {
+    stopPolling();
+    await pollJobLogs();
+    state.activeJobId = null;
+    setStatus("error", "分析失败", data.error || "任务执行失败");
+    setSubmitting(false);
+  }
+}
+
+async function runPollingCycle() {
+  await pollJobLogs();
+  await pollJobStatus();
+}
+
+function startPolling(jobId) {
+  stopPolling();
+  state.activeJobId = jobId;
+  state.logOffset = 0;
+  logConsole.textContent = "";
+  logMeta.textContent = "任务已提交，等待首批日志...";
+  scheduleNextPoll(0);
+}
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  setStatus("running", "分析中", "后端正在抽帧、执行检测并整理可视化结果。");
+  stopPolling();
+  state.activeJobId = null;
+  setSubmitting(true);
+  setStatus("running", "分析中", "后端正在抽帧、执行检测并实时写出日志。");
   resultsPanel.classList.add("hidden");
+  resetArtifacts();
+  clearLogConsole();
   try {
     const response = await fetch("/api/evaluate", {
       method: "POST",
@@ -221,16 +388,28 @@ form.addEventListener("submit", async (event) => {
     });
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.error || "分析失败");
+      throw new Error(data.error || "任务提交失败");
     }
-    renderResults(data);
-    setStatus("success", "分析完成", `已完成 ${data.video_name} 的评测，综合分 ${data.final_score.toFixed(3)}。`);
+    if (isImmediateResultResponse(data)) {
+      renderResults(data);
+      setStatus("success", "分析完成", `当前后端返回的是同步结果，已完成 ${data.video_name} 的评测。`);
+      logMeta.textContent = "当前后端未启用任务日志流";
+      setSubmitting(false);
+      return;
+    }
+    if (!data.job_id) {
+      throw new Error("后端未返回 job_id。请重启 WebUI 服务并强制刷新页面后重试。");
+    }
+    setStatus("running", "任务已创建", `任务 ${data.job_id} 已进入队列，正在等待分析结果。`);
+    startPolling(data.job_id);
   } catch (error) {
     setStatus("error", "分析失败", error.message || "请求失败");
+    setSubmitting(false);
   }
 });
 
 fillDemoButton.addEventListener("click", fillDemo);
+clearLogsButton.addEventListener("click", clearLogConsole);
 
 fetchConfig()
   .then(() => setStatus("idle", "系统就绪", "可以直接上传视频或填写本地路径开始分析。"))

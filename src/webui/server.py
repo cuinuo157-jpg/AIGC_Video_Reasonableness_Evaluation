@@ -9,14 +9,15 @@ import traceback
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from .reporting import build_dashboard_report
 from .service import (
     DEFAULT_UPLOAD_DIR,
+    DEFAULT_RESULTS_DIR,
+    WebUIJobManager,
     build_frontend_config,
     build_run_config,
-    run_analysis,
     save_uploaded_file,
 )
 
@@ -36,6 +37,7 @@ class WebUIHTTPServer(ThreadingHTTPServer):
         super().__init__(server_address, request_handler)
         self.upload_dir = upload_dir or DEFAULT_UPLOAD_DIR
         self.frontend_config = build_frontend_config()
+        self.job_manager = WebUIJobManager(results_dir=DEFAULT_RESULTS_DIR)
 
 
 class WebUIRequestHandler(BaseHTTPRequestHandler):
@@ -51,6 +53,9 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/config":
             self._send_json(self.server.frontend_config)
+            return
+        if parsed.path.startswith("/api/jobs/"):
+            self._handle_job_get(parsed)
             return
         if parsed.path.startswith("/static/"):
             target = (STATIC_DIR / parsed.path.removeprefix("/static/")).resolve()
@@ -75,9 +80,15 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         try:
             payload, uploaded_video_path = self._parse_request_payload()
             run_config = build_run_config(payload, uploaded_video_path=uploaded_video_path)
-            report, elapsed = run_analysis(run_config)
-            response = build_dashboard_report(report, run_config, elapsed)
-            self._send_json(response)
+            job = self.server.job_manager.create_job(run_config)
+            self._send_json(
+                {
+                    "job_id": job.job_id,
+                    "status": job.status,
+                    "video_name": Path(run_config.video_path).name,
+                },
+                status=HTTPStatus.ACCEPTED,
+            )
         except ValueError as exc:
             self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
         except Exception as exc:  # pragma: no cover - defensive path
@@ -87,6 +98,27 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 str(exc),
                 details=traceback.format_exc(limit=8),
             )
+
+    def _handle_job_get(self, parsed: Any) -> None:
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) < 3:
+            self._send_error_json(HTTPStatus.NOT_FOUND, "job route not found")
+            return
+        _, _, job_id, *rest = parts
+        try:
+            if not rest:
+                self._send_json(self.server.job_manager.get_job_snapshot(job_id))
+                return
+            if len(rest) == 1 and rest[0] == "logs":
+                query = parse_qs(parsed.query, keep_blank_values=True)
+                offset = int(query.get("offset", ["0"])[0] or 0)
+                self._send_json(self.server.job_manager.get_job_logs(job_id, offset=offset))
+                return
+            self._send_error_json(HTTPStatus.NOT_FOUND, "job subroute not found")
+        except KeyError:
+            self._send_error_json(HTTPStatus.NOT_FOUND, f"job not found: {job_id}")
+        except ValueError as exc:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
 
     def _parse_request_payload(self) -> tuple[dict[str, object], str | None]:
         content_type = self.headers.get("Content-Type", "")
@@ -154,6 +186,8 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type or guessed or "application/octet-stream")
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store, max-age=0")
+        self.send_header("Pragma", "no-cache")
         self.end_headers()
         self.wfile.write(data)
 
@@ -162,6 +196,8 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store, max-age=0")
+        self.send_header("Pragma", "no-cache")
         self.end_headers()
         self.wfile.write(body)
 
