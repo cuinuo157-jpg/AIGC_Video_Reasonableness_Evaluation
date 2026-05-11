@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AIGC 视频合理性评测台</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">AIGC Video Reasonableness Evaluation</p>
+        <h1>视频异常检测与维度诊断工作台</h1>
+        <p class="hero-copy">
+          上传视频或填写本地路径，按需选择五类异常或全量维度，直接查看综合分、维度分、异常摘要与性能配置。
+        </p>
+      </div>
+      <div class="hero-note">
+        <span class="note-chip">共享取帧</span>
+        <span class="note-chip">降采样</span>
+        <span class="note-chip">多线程</span>
+        <span class="note-chip">结构化结果</span>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel control-panel">
+        <div class="panel-head">
+          <h2>检测配置</h2>
+          <p>支持本地路径或文件上传，两者二选一即可。</p>
+        </div>
+        <form id="analysis-form">
+          <label class="field">
+            <span>本地视频路径</span>
+            <input type="text" name="video_path" placeholder="例如 data/sample.mp4">
+          </label>
+
+          <label class="field">
+            <span>上传视频文件</span>
+            <input type="file" name="video_file" accept="video/*">
+          </label>
+
+          <div class="field">
+            <span>分析范围</span>
+            <div id="scope-options" class="scope-grid"></div>
+          </div>
+
+          <div class="field">
+            <span>异常/维度选择</span>
+            <div id="dimension-options" class="check-grid"></div>
+          </div>
+
+          <div class="field field-inline">
+            <label>
+              <span>设备</span>
+              <input type="text" name="device" value="cuda">
+            </label>
+            <label>
+              <span>最大线程</span>
+              <input type="number" name="max_workers" min="1" placeholder="自动">
+            </label>
+          </div>
+
+          <div class="field field-inline">
+            <label>
+              <span>采样步长</span>
+              <input type="number" name="sample_stride" min="1" value="2">
+            </label>
+            <label>
+              <span>最大帧数</span>
+              <input type="number" name="max_frames" min="2" value="48">
+            </label>
+            <label>
+              <span>最大边长</span>
+              <input type="number" name="max_side" min="64" value="640">
+            </label>
+          </div>
+
+          <div class="field toggle-row">
+            <label class="toggle">
+              <input type="checkbox" name="parallel" checked>
+              <span>启用并发检测</span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" name="enable_mllm">
+              <span>启用 MLLM/VLM</span>
+            </label>
+          </div>
+
+          <div class="action-row">
+            <button type="submit" class="primary-btn">开始分析</button>
+            <button type="button" id="fill-demo" class="ghost-btn">填入示例</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel status-panel">
+        <div class="panel-head">
+          <h2>运行状态</h2>
+          <p>分析执行期间会显示当前状态和错误信息。</p>
+        </div>
+        <div id="status-card" class="status-card idle">
+          <div class="status-indicator"></div>
+          <div>
+            <h3 id="status-title">等待提交</h3>
+            <p id="status-text">配置完成后点击“开始分析”。</p>
+          </div>
+        </div>
+        <div class="info-list">
+          <div>
+            <span class="info-k">后端</span>
+            <span class="info-v">标准库 HTTP 服务</span>
+          </div>
+          <div>
+            <span class="info-k">结果</span>
+            <span class="info-v">综合分 + 维度卡片 + 事件摘要</span>
+          </div>
+          <div>
+            <span class="info-k">优化</span>
+            <span class="info-v">共享取帧、限帧、缩放、并发执行</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <section id="results-panel" class="results-panel hidden">
+      <div class="results-overview">
+        <div class="panel score-panel">
+          <div class="panel-head">
+            <h2>综合结果</h2>
+            <p id="result-video">-</p>
+          </div>
+          <div class="score-wrap">
+            <div id="final-score-ring" class="score-ring">
+              <div class="score-core">
+                <strong id="final-score-value">0.000</strong>
+                <span>综合分</span>
+              </div>
+            </div>
+            <div class="score-meta" id="score-meta"></div>
+          </div>
+        </div>
+
+        <div class="panel summary-panel">
+          <div class="panel-head">
+            <h2>运行摘要</h2>
+            <p>本次任务的时间、范围与最好/最弱维度。</p>
+          </div>
+          <div id="summary-grid" class="summary-grid"></div>
+        </div>
+      </div>
+
+      <div class="panel dimension-panel">
+        <div class="panel-head">
+          <h2>维度诊断</h2>
+          <p>显示各维度分数、关键指标和异常事件。</p>
+        </div>
+        <div id="dimension-cards" class="dimension-cards"></div>
+      </div>
+    </section>
+  </div>
+
+  <template id="dimension-card-template">
+    <article class="dimension-card">
+      <div class="dimension-top">
+        <div>
+          <p class="dimension-label"></p>
+          <h3 class="dimension-score-text"></h3>
+          <p class="dimension-desc"></p>
+        </div>
+        <span class="dimension-band"></span>
+      </div>
+      <div class="progress-track"><div class="progress-fill"></div></div>
+      <div class="metrics-grid"></div>
+      <div class="highlights-block">
+        <h4>摘要</h4>
+        <ul class="highlights-list"></ul>
+      </div>
+      <div class="events-block hidden">
+        <h4>事件</h4>
+        <div class="event-list"></div>
+      </div>
+    </article>
+  </template>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

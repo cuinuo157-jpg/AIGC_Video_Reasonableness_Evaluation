@@ -1,5 +1,11 @@
 运行与批处理脚本：单视频评估、批量评估、可视化与结果汇总入口。
 
+## Web 界面
+
+- `python scripts/run_webui.py --host 127.0.0.1 --port 8080`
+
+启动后访问 `http://127.0.0.1:8080`，可通过浏览器上传视频、选择检测维度并查看可视化结果。
+
 ## 单视频调试脚本
 
 - `python scripts/debug_bio_anomaly.py --input <video> --save-vis`

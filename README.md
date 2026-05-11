@@ -163,6 +163,19 @@ python scripts/eval_video_reasonableness_dashscope.py \
   --model qwen3-vl-8b-thinking
 ```
 
+### 7) Web 可视化界面
+
+```bash
+python scripts/run_webui.py --host 127.0.0.1 --port 8080
+```
+
+打开 `http://127.0.0.1:8080`，可通过页面：
+
+- 上传视频或填写本地视频路径
+- 选择“五类异常”或“全量维度”
+- 配置 `sample_stride / max_frames / max_side / parallel`
+- 查看综合分、维度分、异常摘要与事件列表
+
 ---
 
 ## 统一流水线（代码调用）

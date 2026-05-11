@@ -19,12 +19,32 @@ def _patch_pyfeat_cache() -> None:
     _fio.get_resource_path = lambda: _PYFEAT_CACHE
 
 
+def _patch_scipy_compat() -> None:
+    """兼容新版本 SciPy 移除 integrate.simps 的情况。"""
+    try:
+        import scipy.integrate as _integrate
+    except Exception:
+        return
+
+    if hasattr(_integrate, "simps") or not hasattr(_integrate, "simpson"):
+        return
+
+    def _simps(y, x=None, dx=1.0, axis=-1, even=None):
+        kwargs = {"dx": dx, "axis": axis}
+        if x is not None:
+            kwargs["x"] = x
+        return _integrate.simpson(y, **kwargs)
+
+    _integrate.simps = _simps
+
+
 class AUExtractor:
     def __init__(self) -> None:
         self._detector = None
 
     def _ensure_detector(self) -> None:
         if self._detector is None:
+            _patch_scipy_compat()
             _patch_pyfeat_cache()
             from feat import Detector
 
