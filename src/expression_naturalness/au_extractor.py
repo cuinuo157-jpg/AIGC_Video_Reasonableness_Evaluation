@@ -16,7 +16,17 @@ def _patch_pyfeat_cache() -> None:
     os.makedirs(_PYFEAT_CACHE, exist_ok=True)
     import feat.utils.io as _fio
 
-    _fio.get_resource_path = lambda: _PYFEAT_CACHE
+    get_resource_path = lambda: _PYFEAT_CACHE
+    _fio.get_resource_path = get_resource_path
+
+    # feat.pretrained 在模块导入时可能已经绑定了 get_resource_path，
+    # 仅 patch feat.utils.io 不足以覆盖下载/查找逻辑。
+    try:
+        import feat.pretrained as _fpretrained
+    except Exception:
+        return
+
+    _fpretrained.get_resource_path = get_resource_path
 
 
 def _patch_scipy_compat() -> None:
