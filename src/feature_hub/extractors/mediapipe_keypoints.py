@@ -3,22 +3,8 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-
+from .video_frames import load_video_frames
 _holistic = None
-
-
-def _load_frames(video_path: str) -> tuple[list[np.ndarray], float]:
-    """加载视频帧并返回帧列表和 fps。"""
-    cap = cv2.VideoCapture(video_path)
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    frames = []
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-        frames.append(frame)
-    cap.release()
-    return frames, fps
 
 
 def _get_holistic():
@@ -100,13 +86,20 @@ _RIGHT_EYE = {"vertical1": (386, 374), "vertical2": (385, 373), "horizontal": (3
 _MOUTH = {"top": 13, "bottom": 14, "left": 78, "right": 308}
 
 
-def extract_mediapipe_keypoints(video_path: str, device: str) -> list[dict]:
+def extract_mediapipe_keypoints(
+    video_path: str,
+    device: str,
+    hub: object | None = None,
+) -> list[dict]:
     """提取 MediaPipe Holistic 关键点并预计算生理指标。
 
     返回每帧一个 dict，包含 body/left_hand/right_hand/face 数组
     以及预计算的 ear_left/ear_right/ear_avg/mar 标量。
     """
-    frames, fps = _load_frames(video_path)
+    if hub is not None:
+        frames = hub.get("video_frames")
+    else:
+        frames = load_video_frames(video_path)
 
     results: list[dict] = []
     for idx, frame in enumerate(frames):

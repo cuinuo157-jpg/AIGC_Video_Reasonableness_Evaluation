@@ -1,21 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
-
 import cv2
 import numpy as np
 
-
-def _load_frames(video_path: str) -> list[np.ndarray]:
-    cap = cv2.VideoCapture(video_path)
-    frames = []
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-        frames.append(frame)
-    cap.release()
-    return frames
+from .video_frames import load_video_frames
 
 
 def _compute_flows(
@@ -33,9 +21,14 @@ def _compute_flows(
 
 
 def extract_optical_flow(
-    video_path: str, device: str
+    video_path: str,
+    device: str,
+    hub: object | None = None,
 ) -> list[tuple[np.ndarray, np.ndarray]]:
-    frames = _load_frames(video_path)
+    if hub is not None:
+        frames = hub.get("video_frames")
+    else:
+        frames = load_video_frames(video_path)
     if len(frames) < 2:
         return []
     return _compute_flows(frames, device)

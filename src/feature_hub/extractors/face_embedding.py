@@ -1,23 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
-import cv2
 import numpy as np
 
+from .video_frames import load_video_frames
+
 _face_analyzer = None
-
-
-def _load_frames(video_path: str) -> list[np.ndarray]:
-    cap = cv2.VideoCapture(video_path)
-    frames = []
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-        frames.append(frame)
-    cap.release()
-    return frames
 
 
 def _get_face_analyzer(device: str) -> Any:
@@ -38,8 +28,15 @@ def _get_face_analyzer(device: str) -> Any:
     return _face_analyzer
 
 
-def extract_face_embeddings(video_path: str, device: str) -> list[dict]:
-    frames = _load_frames(video_path)
+def extract_face_embeddings(
+    video_path: str,
+    device: str,
+    hub: object | None = None,
+) -> list[dict]:
+    if hub is not None:
+        frames = hub.get("video_frames")
+    else:
+        frames = load_video_frames(video_path)
     analyzer = _get_face_analyzer(device)
     results = []
     for frame in frames:

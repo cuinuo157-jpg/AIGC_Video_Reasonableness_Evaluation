@@ -14,6 +14,8 @@ from typing import Any
 import cv2
 import numpy as np
 
+from .video_frames import load_video_frames
+
 logger = logging.getLogger(__name__)
 
 # ── 项目根目录 & RAFT 路径 ────────────────────────────────────
@@ -228,17 +230,8 @@ def _get_raft(device: str) -> SimpleRAFT:
 
 # ── Hub Extractor 接口 ───────────────────────────────────────
 
-def _load_frames_rgb(video_path: str) -> list[np.ndarray]:
-    """加载视频帧为 RGB 格式。"""
-    cap = cv2.VideoCapture(video_path)
-    frames: list[np.ndarray] = []
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-        frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-    cap.release()
-    return frames
+def _to_rgb_frames(frames_bgr: list[np.ndarray]) -> list[np.ndarray]:
+    return [cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) for frame in frames_bgr]
 
 
 def extract_raft_flow(
@@ -251,7 +244,11 @@ def extract_raft_flow(
     返回格式与 optical_flow extractor 一致:
       list[tuple[flow_x (H,W), flow_y (H,W)]]
     """
-    frames = _load_frames_rgb(video_path)
+    if hub is not None:
+        frames_bgr = hub.get("video_frames")
+    else:
+        frames_bgr = load_video_frames(video_path)
+    frames = _to_rgb_frames(frames_bgr)
     if len(frames) < 2:
         return []
 

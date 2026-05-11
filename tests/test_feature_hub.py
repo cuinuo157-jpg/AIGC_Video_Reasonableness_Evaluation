@@ -1,7 +1,10 @@
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 from unittest.mock import MagicMock
 
-from src.feature_hub.hub import FeatureHub
+from src.feature_hub.hub import FeatureHub, VideoProcessingConfig
 
 
 def test_hub_init():
@@ -45,3 +48,29 @@ def test_hub_available_features():
     hub.register_extractor("a", lambda vp, d: None)
     hub.register_extractor("b", lambda vp, d: None)
     assert set(hub.available_features()) == {"a", "b"}
+
+
+def test_hub_keeps_video_config():
+    cfg = VideoProcessingConfig(sample_stride=2, max_frames=16, max_side=512)
+    hub = FeatureHub(video_path="test.mp4", device="cpu", video_config=cfg)
+    assert hub.video_config == cfg
+
+
+def test_hub_parallel_get_only_computes_once():
+    hub = FeatureHub(video_path="test.mp4", device="cpu")
+    call_count = 0
+
+    def extractor(video_path, device):
+        nonlocal call_count
+        call_count += 1
+        time.sleep(0.05)
+        return {"video_path": video_path, "device": device}
+
+    hub.register_extractor("shared", extractor)
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(hub.get, "shared") for _ in range(4)]
+        results = [future.result() for future in futures]
+
+    assert call_count == 1
+    assert all(result == results[0] for result in results)

@@ -1,4 +1,4 @@
-from src.feature_hub.hub import create_default_hub
+from src.feature_hub.hub import VideoProcessingConfig, create_default_hub
 
 
 def test_create_default_hub_has_extractors():
@@ -12,3 +12,9 @@ def test_create_default_hub_has_extractors():
     assert "camera_compensation" in features
     assert "tracking" in features
     assert "au_features" in features
+
+
+def test_create_default_hub_keeps_video_config():
+    cfg = VideoProcessingConfig(sample_stride=4, max_frames=20, max_side=720)
+    hub = create_default_hub("test.mp4", device="cpu", video_config=cfg)
+    assert hub.video_config == cfg
