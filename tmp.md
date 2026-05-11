@@ -1,134 +1,55 @@
-# Name                    Version                   Build  Channel
-absl-py                   2.3.1                    pypi_0    pypi
-albumentations            1.3.1                    pypi_0    pypi
-annotated-types           0.7.0                    pypi_0    pypi
-anthropic                 0.100.0                  pypi_0    pypi
-anyio                     4.13.0                   pypi_0    pypi
-attrs                     25.4.0                   pypi_0    pypi
-av                        16.1.0                   pypi_0    pypi
-bzip2                     1.0.8                h2bbff1b_6    defaults
-ca-certificates           2025.9.9             haa95532_0    defaults
-celluloid                 0.2.0                    pypi_0    pypi
-certifi                   2025.10.5                pypi_0    pypi
-cffi                      2.0.0                    pypi_0    pypi
-charset-normalizer        3.4.4                    pypi_0    pypi
-colorama                  0.4.6                    pypi_0    pypi
-coloredlogs               15.0.1                   pypi_0    pypi
-contourpy                 1.3.2                    pypi_0    pypi
-cycler                    0.12.1                   pypi_0    pypi
-cython                    3.2.4                    pypi_0    pypi
-decord                    0.6.0                    pypi_0    pypi
-distro                    1.9.0                    pypi_0    pypi
-docstring-parser          0.18.0                   pypi_0    pypi
-easing-functions          1.0.4                    pypi_0    pypi
-easydict                  1.13                     pypi_0    pypi
-exceptiongroup            1.3.1                    pypi_0    pypi
-expat                     2.7.1                h8ddb27b_0    defaults
-filelock                  3.19.1                   pypi_0    pypi
-flatbuffers               25.9.23                  pypi_0    pypi
-fonttools                 4.60.1                   pypi_0    pypi
-fsspec                    2025.9.0                 pypi_0    pypi
-h11                       0.16.0                   pypi_0    pypi
-h5py                      3.16.0                   pypi_0    pypi
-httpcore                  1.0.9                    pypi_0    pypi
-httpx                     0.28.1                   pypi_0    pypi
-huggingface-hub           0.36.0                   pypi_0    pypi
-humanfriendly             10.0                     pypi_0    pypi
-idna                      3.11                     pypi_0    pypi
-imageio                   2.37.3                   pypi_0    pypi
-importlib-resources       6.5.2                    pypi_0    pypi
-iniconfig                 2.3.0                    pypi_0    pypi
-insightface               0.7.3                    pypi_0    pypi
-jax                       0.4.30                   pypi_0    pypi
-jaxlib                    0.4.30                   pypi_0    pypi
-jinja2                    3.1.6                    pypi_0    pypi
-jiter                     0.14.0                   pypi_0    pypi
-joblib                    1.5.2                    pypi_0    pypi
-kiwisolver                1.4.9                    pypi_0    pypi
-kornia                    0.8.2                    pypi_0    pypi
-kornia-rs                 0.1.10                   pypi_0    pypi
-lazy-loader               0.5                      pypi_0    pypi
-libffi                    3.4.4                hd77b12b_1    defaults
-libzlib                   1.3.1                h02ab6af_0    defaults
-markupsafe                2.1.5                    pypi_0    pypi
-matplotlib                3.10.7                   pypi_0    pypi
-mediapipe                 0.10.21                  pypi_0    pypi
-ml-dtypes                 0.5.3                    pypi_0    pypi
-mpmath                    1.3.0                    pypi_0    pypi
-networkx                  3.3                      pypi_0    pypi
-nibabel                   5.3.3                    pypi_0    pypi
-nilearn                   0.13.1                   pypi_0    pypi
-nltools                   0.5.1                    pypi_0    pypi
-numexpr                   2.8.4                    pypi_0    pypi
-numpy                     1.23.5                   pypi_0    pypi
-onnx                      1.21.0                   pypi_0    pypi
-onnxruntime-gpu           1.23.2                   pypi_0    pypi
-openai                    2.36.0                   pypi_0    pypi
-opencv-contrib-python     4.11.0.86                pypi_0    pypi
-opencv-python             4.11.0.86                pypi_0    pypi
-opencv-python-headless    4.11.0.86                pypi_0    pypi
-openssl                   3.0.18               h543e019_0    defaults
-opt-einsum                3.4.0                    pypi_0    pypi
-packaging                 25.0                     pypi_0    pypi
-pandas                    2.3.3                    pypi_0    pypi
-pillow                    11.3.0                   pypi_0    pypi
-pip                       25.2               pyhc872135_1    defaults
-pluggy                    1.6.0                    pypi_0    pypi
-prettytable               3.17.0                   pypi_0    pypi
-protobuf                  4.25.8                   pypi_0    pypi
-py-feat                   0.6.2                    pypi_0    pypi
-pycparser                 2.23                     pypi_0    pypi
-pydantic                  2.13.4                   pypi_0    pypi
-pydantic-core             2.46.4                   pypi_0    pypi
-pygments                  2.19.2                   pypi_0    pypi
-pynv                      0.3                      pypi_0    pypi
-pyparsing                 3.2.5                    pypi_0    pypi
-pyreadline3               3.5.4                    pypi_0    pypi
-pytest                    9.0.2                    pypi_0    pypi
-python                    3.10.18              h981015d_0    defaults
-python-dateutil           2.9.0.post0              pypi_0    pypi
-pytz                      2026.1.post1             pypi_0    pypi
-pywavelets                1.8.0                    pypi_0    pypi
-pyyaml                    6.0.3                    pypi_0    pypi
-qudida                    0.0.4                    pypi_0    pypi
-regex                     2025.10.23               pypi_0    pypi
-requests                  2.32.5                   pypi_0    pypi
-ruff                      0.15.12                  pypi_0    pypi
-safetensors               0.6.2                    pypi_0    pypi
-scikit-image              0.24.0                   pypi_0    pypi
-scikit-learn              1.7.2                    pypi_0    pypi
-scipy                     1.13.1                   pypi_0    pypi
-seaborn                   0.13.2                   pypi_0    pypi
-sentencepiece             0.2.1                    pypi_0    pypi
-setuptools                80.9.0          py310haa95532_0    defaults
-simsimd                   6.5.16                   pypi_0    pypi
-six                       1.17.0                   pypi_0    pypi
-sniffio                   1.3.1                    pypi_0    pypi
-sounddevice               0.5.2                    pypi_0    pypi
-sqlite                    3.50.2               hda9a48d_1    defaults
-stringzilla               4.6.1                    pypi_0    pypi
-sympy                     1.14.0                   pypi_0    pypi
-threadpoolctl             3.6.0                    pypi_0    pypi
-tifffile                  2025.5.10                pypi_0    pypi
-timm                      1.0.27                   pypi_0    pypi
-tk                        8.6.15               hf199647_0    defaults
-tokenizers                0.22.1                   pypi_0    pypi
-tomli                     2.4.0                    pypi_0    pypi
-torch                     2.7.1+cu126              pypi_0    pypi
-torchaudio                2.7.1+cu126              pypi_0    pypi
-torchvision               0.22.1+cu126             pypi_0    pypi
-tqdm                      4.67.1                   pypi_0    pypi
-transformers              4.57.1                   pypi_0    pypi
-typing-extensions         4.15.0                   pypi_0    pypi
-typing-inspection         0.4.2                    pypi_0    pypi
-tzdata                    2025.3                   pypi_0    pypi
-ucrt                      10.0.22621.0         haa95532_0    defaults
-urllib3                   2.5.0                    pypi_0    pypi
-vc                        14.3                h2df5915_10    defaults
-vc14_runtime              14.44.35208         h4927774_10    defaults
-vs2015_runtime            14.44.35208         ha6b5a95_10    defaults
-wcwidth                   0.7.0                    pypi_0    pypi
-wheel                     0.45.1          py310haa95532_0    defaults
-xgboost                   3.2.0                    pypi_0    pypi
-xz                        5.6.4                h4754444_1    defaults
-zlib                      1.3.1                h02ab6af_0    defaults
+表情自然度 (Expression Naturalness) 分析
+==================================================
+视频: /data/AIGC_Video_Reasonableness_Evaluation/data/videos/6706926-hd_1920_1080_25fps.mp4
+设备: cuda
+视频信息: 1920x1080, 25.0fps, 376 帧
+采样: 每 1 帧取 1 帧, 共 376 帧
+
+加载 Py-Feat AU 检测模型...
+^CTraceback (most recent call last):
+  File "/data/AIGC_Video_Reasonableness_Evaluation/scripts/debug_expression.py", line 406, in <module>
+    main()
+  File "/data/AIGC_Video_Reasonableness_Evaluation/scripts/debug_expression.py", line 374, in main
+    au_per_frame = extract_aus(frames)
+  File "/data/AIGC_Video_Reasonableness_Evaluation/scripts/debug_expression.py", line 86, in extract_aus
+    extractor._ensure_detector()
+  File "/data/AIGC_Video_Reasonableness_Evaluation/src/expression_naturalness/au_extractor.py", line 51, in _ensure_detector
+    self._detector = Detector(au_model="xgb")
+  File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/site-packages/feat/detector.py", line 122, in __init__
+    face, landmark, au, emotion, facepose, identity = get_pretrained_models(
+  File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/site-packages/feat/pretrained.py", line 130, in get_pretrained_models
+    download_url(url, get_resource_path(), verbose=verbose)
+  File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/site-packages/feat/utils/io.py", line 81, in download_url
+    return tv_download_url(*args, **kwargs)
+  File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/site-packages/torchvision/datasets/utils.py", line 121, in download_url
+    url = _get_redirect_url(url, max_hops=max_redirect_hops)
+  File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/site-packages/torchvision/datasets/utils.py", line 66, in _get_redirect_url
+    with urllib.request.urlopen(urllib.request.Request(url, headers=headers)) as response:
+  File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/urllib/request.py", line 216, in urlopen
+    return opener.open(url, data, timeout)
+  File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/urllib/request.py", line 519, in open
+    response = self._open(req, data)
+  File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/urllib/request.py", line 536, in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+  File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/urllib/request.py", line 496, in _call_chain
+    result = func(*args)
+  File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/urllib/request.py", line 1391, in https_open
+    return self.do_open(http.client.HTTPSConnection, req,
+  File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/urllib/request.py", line 1348, in do_open
+    h.request(req.get_method(), req.selector, req.data, headers,
+  File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/http/client.py", line 1283, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+  File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/http/client.py", line 1329, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+  File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/http/client.py", line 1278, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+  File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/http/client.py", line 1038, in _send_output
+    self.send(msg)
+  File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/http/client.py", line 976, in send
+    self.connect()
+  File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/http/client.py", line 1448, in connect
+    super().connect()
+  File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/http/client.py", line 942, in connect
+    self.sock = self._create_connection(
+  File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/socket.py", line 845, in create_connection
+    sock.connect(sa)
