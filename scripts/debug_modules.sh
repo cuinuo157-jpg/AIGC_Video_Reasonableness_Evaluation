@@ -18,7 +18,7 @@ echo "DEVICE=${DEVICE}"
 # "${PYTHON_BIN}" scripts/debug_physics.py --input "${VIDEO_PATH}" --device "${DEVICE}" --enable-mllm
 
 # ------------------ 其他模块命令（先注释，按需打开） ------------------
-"${PYTHON_BIN}" scripts/debug_dynamics.py --input "${VIDEO_PATH}" --device "${DEVICE}" --enable-mllm
+"${PYTHON_BIN}" scripts/debug_dynamics.py --input "${VIDEO_PATH}" --device "${DEVICE}" --enable-mllm --analysis-mode motion
 # "${PYTHON_BIN}" scripts/debug_temporal_coherence.py --input "${VIDEO_PATH}" --device "${DEVICE}" --enable-mllm
 # "${PYTHON_BIN}" scripts/debug_bio_anomaly.py --input "${VIDEO_PATH}" --device "${DEVICE}"
 # "${PYTHON_BIN}" scripts/debug_expression.py --input "${VIDEO_PATH}" --device "${DEVICE}"
