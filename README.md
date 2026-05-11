@@ -85,6 +85,12 @@ uv sync --extra dashscope
 pip install -r requirements.txt
 ```
 
+依赖兼容说明：
+
+- 当前项目依赖 `mediapipe` 与 `py-feat/nltools`，两者共同约束要求 `numpy < 1.24`
+- 因此项目已将 `numpy` 固定在 `>=1.23.5,<1.24`
+- 如果你的环境里已经装成了 `numpy 2.x`，需要先降级再安装项目依赖
+
 ### 环境变量
 
 复制并编辑 `.env.example`：
@@ -98,6 +104,12 @@ cp .env.example .env
 - `DASHSCOPE_API_KEY`：DashScope 视频 VLM 所需
 - `DASHSCOPE_BASE_URL`：可选（国际区等）
 - `VLLM_OPENAI_BASE_URL` / `VLLM_API_KEY`：本地 OpenAI 兼容 VLLM 服务
+
+ONNX Runtime 说明：
+
+- 项目默认依赖 `onnxruntime`，用于 `insightface` 等 ONNX 模型推理
+- 如果你使用 GPU 版 ONNX Runtime，可手动将 `onnxruntime` 替换为 `onnxruntime-gpu`
+- 不建议在同一环境里同时安装 `onnxruntime` 和 `onnxruntime-gpu`
 
 ---
 
