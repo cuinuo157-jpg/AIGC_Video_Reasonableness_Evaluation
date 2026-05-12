@@ -26,6 +26,7 @@ const dimensionCards = document.getElementById("dimension-cards");
 const dimensionTemplate = document.getElementById("dimension-card-template");
 const resultPath = document.getElementById("result-path");
 const logPath = document.getElementById("log-path");
+const artifactRootPath = document.getElementById("artifact-root-path");
 const logConsole = document.getElementById("log-console");
 const logMeta = document.getElementById("log-meta");
 const artifactRibbon = document.getElementById("artifact-ribbon");
@@ -39,8 +40,10 @@ function setStatus(mode, title, text) {
 function resetArtifacts() {
   resultPath.textContent = "-";
   logPath.textContent = "-";
+  artifactRootPath.textContent = "-";
   resultPath.title = "";
   logPath.title = "";
+  artifactRootPath.title = "";
   artifactRibbon.innerHTML = "";
 }
 
@@ -145,6 +148,8 @@ function fillDemo() {
   form.elements.device.value = state.config.defaults.device;
   form.elements.au_backend.value = state.config.defaults.au_backend;
   form.elements.au_external_python.value = state.config.defaults.au_external_python;
+  form.elements.save_visualizations.checked = Boolean(state.config.defaults.save_visualizations);
+  form.elements.visualization_root.value = state.config.defaults.visualization_root;
   form.elements.enable_mllm.checked = Boolean(state.config.defaults.enable_mllm);
   form.elements.mllm_provider.value = state.config.defaults.mllm_provider;
   form.elements.mllm_model.value = state.config.defaults.mllm_model;
@@ -163,6 +168,7 @@ function collectFormData() {
     "device",
     "au_backend",
     "au_external_python",
+    "visualization_root",
     "mllm_provider",
     "mllm_model",
     "mllm_base_url",
@@ -182,6 +188,7 @@ function collectFormData() {
 
   payload.append("scope", state.scope);
   payload.append("parallel", String(form.elements.parallel.checked));
+  payload.append("save_visualizations", String(form.elements.save_visualizations.checked));
   payload.append("enable_mllm", String(form.elements.enable_mllm.checked));
 
   const fileInput = form.elements.video_file;
@@ -228,6 +235,16 @@ function renderArtifactChip(label, value) {
   return chip;
 }
 
+function formatRawOutput(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  return JSON.stringify(value, null, 2);
+}
+
 function renderResults(data) {
   resultsPanel.classList.remove("hidden");
   resultVideo.textContent = `${data.video_name} · ${data.scope === "anomaly" ? "五类异常" : "全量维度"}`;
@@ -237,8 +254,10 @@ function renderResults(data) {
 
   resultPath.textContent = data.result_json_path || "-";
   logPath.textContent = data.log_path || "-";
+  artifactRootPath.textContent = data.artifact_root || "-";
   resultPath.title = data.result_json_path || "";
   logPath.title = data.log_path || "";
+  artifactRootPath.title = data.artifact_root || "";
 
   artifactRibbon.innerHTML = "";
   if (data.result_json_path) {
@@ -246,6 +265,9 @@ function renderResults(data) {
   }
   if (data.log_path) {
     artifactRibbon.appendChild(renderArtifactChip("日志", data.log_path));
+  }
+  if (data.artifact_root) {
+    artifactRibbon.appendChild(renderArtifactChip("可视化", data.artifact_root));
   }
 
   scoreMeta.innerHTML = "";
@@ -256,6 +278,7 @@ function renderResults(data) {
     `采样步长 ${data.video_processing.sample_stride} / 最大帧 ${data.video_processing.max_frames ?? "不限"}`,
     `并发 ${data.video_processing.parallel ? "开启" : "关闭"} / worker ${data.video_processing.max_workers ?? "auto"}`,
     `AU ${data.video_processing.au_backend} / ${data.video_processing.au_external_python || "-"}`,
+    `可视化 ${data.video_processing.save_visualizations ? "开启" : "关闭"} / ${data.video_processing.visualization_root || "-"}`,
     `MLLM ${data.video_processing.enable_mllm ? `${data.video_processing.mllm_provider} / ${data.video_processing.mllm_model}` : "关闭"}`,
   ].forEach((text) => {
     const chip = document.createElement("div");
@@ -273,6 +296,7 @@ function renderResults(data) {
   summaryGrid.appendChild(renderSummaryItem("最弱分数", data.summary.worst_score != null ? data.summary.worst_score.toFixed(3) : "-"));
   summaryGrid.appendChild(renderSummaryItem("源视频", data.video_name));
   summaryGrid.appendChild(renderSummaryItem("结果路径", data.result_json_path ? "已生成" : "未写入"));
+  summaryGrid.appendChild(renderSummaryItem("可视化产物", Array.isArray(data.artifacts) ? data.artifacts.length : 0));
 
   dimensionCards.innerHTML = "";
   data.dimensions.forEach((dimension) => {
@@ -315,6 +339,21 @@ function renderResults(data) {
       eventsBlock.classList.remove("hidden");
       const eventList = node.querySelector(".event-list");
       dimension.events.forEach((event) => eventList.appendChild(renderEvent(event)));
+    }
+
+    if (dimension.vlm_raw_output !== null && dimension.vlm_raw_output !== undefined) {
+      const rawBlock = node.querySelector(".vlm-raw-block");
+      rawBlock.classList.remove("hidden");
+      node.querySelector(".raw-output-console").textContent = formatRawOutput(dimension.vlm_raw_output);
+    }
+
+    if (Array.isArray(dimension.artifacts) && dimension.artifacts.length > 0) {
+      const artifactBlock = node.querySelector(".dimension-artifacts-block");
+      artifactBlock.classList.remove("hidden");
+      const artifactList = node.querySelector(".dimension-artifact-list");
+      dimension.artifacts.forEach((artifact) => {
+        artifactList.appendChild(renderArtifactChip(artifact.label, artifact.path));
+      });
     }
 
     dimensionCards.appendChild(node);
@@ -364,6 +403,10 @@ async function pollJobStatus() {
   if (data.log_path) {
     logPath.textContent = data.log_path;
     logPath.title = data.log_path;
+  }
+  if (data.artifact_root) {
+    artifactRootPath.textContent = data.artifact_root;
+    artifactRootPath.title = data.artifact_root;
   }
 
   if (data.status === "completed" && data.result) {

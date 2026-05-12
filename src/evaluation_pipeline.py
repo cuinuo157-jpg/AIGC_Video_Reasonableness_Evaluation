@@ -225,6 +225,22 @@ class EvaluationPipeline:
         max_workers: int | None = None,
     ) -> EvaluationReport:
         """对视频执行评测，支持按维度选择与并发调度。"""
+        report, _hub = self.evaluate_with_hub(
+            video_path,
+            selected_dimensions=selected_dimensions,
+            parallel=parallel,
+            max_workers=max_workers,
+        )
+        return report
+
+    def evaluate_with_hub(
+        self,
+        video_path: str,
+        selected_dimensions: str | Iterable[str] | None = None,
+        parallel: bool | None = None,
+        max_workers: int | None = None,
+    ) -> tuple[EvaluationReport, FeatureHub]:
+        """对视频执行评测，并返回复用的 FeatureHub。"""
         hub = self._create_hub(video_path)
         dimension_names = self._normalize_dimensions(selected_dimensions)
         results: dict[str, DimensionResult] = {}
@@ -246,11 +262,12 @@ class EvaluationPipeline:
 
         active, final_score = _redistribute_weights(results)
 
-        return EvaluationReport(
+        report = EvaluationReport(
             dimensions=results,
             active_dimensions=list(active.keys()),
             final_score=final_score,
         )
+        return report, hub
 
     def detect_anomalies(
         self,
@@ -262,6 +279,22 @@ class EvaluationPipeline:
         """统一的五类异常检测接口。"""
         selected = anomaly_types or DEFAULT_ANOMALY_TYPES
         return self.evaluate(
+            video_path,
+            selected_dimensions=selected,
+            parallel=parallel,
+            max_workers=max_workers,
+        )
+
+    def detect_anomalies_with_hub(
+        self,
+        video_path: str,
+        anomaly_types: str | Iterable[str] | None = None,
+        parallel: bool | None = None,
+        max_workers: int | None = None,
+    ) -> tuple[EvaluationReport, FeatureHub]:
+        """统一的五类异常检测接口，并返回复用的 FeatureHub。"""
+        selected = anomaly_types or DEFAULT_ANOMALY_TYPES
+        return self.evaluate_with_hub(
             video_path,
             selected_dimensions=selected,
             parallel=parallel,

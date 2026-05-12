@@ -27,6 +27,20 @@ def _event(title: str, detail: str, severity: str = "info") -> dict[str, str]:
     return {"title": title, "detail": detail, "severity": severity}
 
 
+def _json_ready(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        return {str(k): _json_ready(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_ready(item) for item in value]
+    if isinstance(value, np.generic):
+        return value.item()
+    if is_dataclass(value):
+        return {key: _json_ready(getattr(value, key)) for key in value.__dataclass_fields__.keys()}
+    return str(value)
+
+
 def _top_events(items: list[dict[str, Any]], limit: int = 5) -> list[dict[str, Any]]:
     return items[:limit]
 
@@ -241,6 +255,16 @@ def _summarize_generic(raw: Any, score: float | None) -> tuple[list[dict[str, An
     return metrics, highlights, []
 
 
+def _extract_vlm_raw_output(name: str, raw: Any) -> Any:
+    if name == "motion_logic":
+        return _json_ready(getattr(raw, "naturalness_mllm_result", None))
+    if name == "physics":
+        return _json_ready(getattr(raw, "vlm_raw_result", None))
+    if name == "biological_anomaly":
+        return _json_ready(getattr(raw, "mllm_raw_result", None))
+    return None
+
+
 def _build_card(name: str, result: DimensionResult) -> dict[str, Any]:
     label = DIMENSION_CATALOG.get(name, {}).get("label", name)
     description = DIMENSION_CATALOG.get(name, {}).get("description", "")
@@ -258,6 +282,8 @@ def _build_card(name: str, result: DimensionResult) -> dict[str, Any]:
             "metrics": [],
             "highlights": [],
             "events": [],
+            "vlm_raw_output": None,
+            "artifacts": [],
         }
 
     raw = result.details
@@ -284,6 +310,8 @@ def _build_card(name: str, result: DimensionResult) -> dict[str, Any]:
         "metrics": metrics,
         "highlights": highlights,
         "events": events,
+        "vlm_raw_output": _extract_vlm_raw_output(name, raw),
+        "artifacts": [],
     }
 
 
@@ -319,6 +347,8 @@ def build_dashboard_report(
             "mllm_service_name": run_config.mllm_service_name,
             "au_backend": run_config.au_backend,
             "au_external_python": run_config.au_external_python,
+            "save_visualizations": run_config.save_visualizations,
+            "visualization_root": run_config.visualization_root,
         },
         "summary": {
             "dimension_count": len(cards),
@@ -330,4 +360,6 @@ def build_dashboard_report(
             "worst_score": worst["score"] if worst else None,
         },
         "dimensions": cards,
+        "artifact_root": None,
+        "artifacts": [],
     }

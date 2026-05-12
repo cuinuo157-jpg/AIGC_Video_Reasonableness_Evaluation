@@ -13,8 +13,9 @@
     --save-vis     保存可视化结果到 outputs/bio_anomaly/
     --no-mllm      禁用 Level 3 MLLM 判定
 
-Level 3 MLLM 默认 vllm（与 debug_dynamics / test_qwen_35_video 一致）。
-环境变量: VLLM_OPENAI_BASE_URL、VLLM_API_KEY；dashscope 时需 DASHSCOPE_API_KEY。
+Level 3 MLLM 默认 huawei_custom。
+环境变量: MLLM_API_BASE_URL、MLLM_API_KEY、MLLM_API_SERVICE_NAME；
+也兼容 VLLM_OPENAI_BASE_URL / VLLM_API_KEY 和 DASHSCOPE_API_KEY。
 """
 
 from __future__ import annotations
@@ -61,6 +62,11 @@ from src.mllm.client import MLLMClient
 from src.mllm.config import MLLMConfig
 from src.mllm.dotenv_loader import load_dotenv
 
+DEFAULT_MLLM_PROVIDER = "huawei_custom"
+DEFAULT_MLLM_MODEL = "Qwen3-VL-32B-Instruct"
+DEFAULT_MLLM_BASE_URL = "http://aitest-beta.rnd.huawei.com/v1"
+DEFAULT_MLLM_SERVICE_NAME = "simple_client"
+
 
 # ── 0. MLLM 抽帧预览辅助 ─────────────────────────────────
 
@@ -79,7 +85,7 @@ def _preview_and_save_roi_crops(
       1. extract_suspicious_rois() → max_crops 张 ROI 裁剪（numpy BGR）
       2. 写入临时 MP4 (temp_fps=6)
       3. extract_frames_jpeg_bytes(tmp_mp4, extract_fps=2) → frame_interval=max(1,int(6/2))=3
-      4. subsample_uniform(vllm_max_frames=5) → 最终送入 VLLM 的帧数
+      4. subsample_uniform(max_frames=5) → 最终送入 MLLM 的帧数
     """
     temp_fps = 6
     extract_fps = 2
@@ -102,8 +108,8 @@ def _preview_and_save_roi_crops(
         "extract_fps": extract_fps,
         "frame_interval": frame_interval,
         "after_fps_extract": frames_after_fps,
-        "vllm_max_frames": vllm_max_frames,
-        "frames_sent_to_vllm": frames_sent,
+        "mllm_max_frames": vllm_max_frames,
+        "frames_sent_to_mllm": frames_sent,
     }
 
     print(f"\n{'='*60}")
@@ -113,7 +119,7 @@ def _preview_and_save_roi_crops(
     print(f"  extract_suspicious_rois → {len(crop_frames)} 张 ROI 裁剪（max_crops={config.mllm_max_crops}）")
     print(f"  写入临时 MP4 (fps={temp_fps}，共 {len(crop_frames)} 帧，时长≈{len(crop_frames)/temp_fps:.2f}s)")
     print(f"  extract_frames_jpeg_bytes(fps={extract_fps}): frame_interval={frame_interval}, 抽取 → {frames_after_fps} 帧")
-    print(f"  subsample_uniform(max={vllm_max_frames}) → 最终送入 VLLM: {frames_sent} 帧")
+    print(f"  subsample_uniform(max={vllm_max_frames}) → 最终送入 MLLM: {frames_sent} 帧")
 
     save_dir.mkdir(parents=True, exist_ok=True)
     for i, (roi, crop) in enumerate(zip(rois, crop_frames)):
@@ -467,16 +473,21 @@ def build_mllm_client(args: argparse.Namespace, enable_mllm: bool) -> MLLMClient
     if not enable_mllm:
         return None
     api_key = (args.mllm_api_key or "").strip()
-    if args.mllm_provider != "vllm" and not api_key:
+    if args.mllm_provider in {"openai", "anthropic", "dashscope"} and not api_key:
         raise ValueError(
-            "启用 MLLM 且非 vllm 时必须提供 API Key（DASHSCOPE_API_KEY 或 --mllm-api-key）"
+            "启用 MLLM 且 provider 为 openai/anthropic/dashscope 时，"
+            "必须提供 API Key（环境变量或 --mllm-api-key）"
         )
+    base_url = (args.mllm_base_url or "").strip()
+    if args.mllm_provider == "huawei_custom" and not base_url:
+        base_url = DEFAULT_MLLM_BASE_URL
     cfg = MLLMConfig(
         backend="api",
         api_provider=args.mllm_provider,
         api_model=args.mllm_model,
         api_key=api_key or None,
-        api_base_url=(args.mllm_base_url or "").strip() or None,
+        api_base_url=base_url or None,
+        api_service_name=(args.mllm_service_name or "").strip() or DEFAULT_MLLM_SERVICE_NAME,
         dashscope_video_fps=args.mllm_fps,
     )
     return MLLMClient(cfg)
@@ -858,26 +869,33 @@ def main():
     parser.add_argument("--no-mllm", action="store_true", help="禁用 Level 3 MLLM")
     parser.add_argument(
         "--mllm-provider",
-        default=os.environ.get("MLLM_PROVIDER", "vllm"),
-        choices=["vllm", "openai", "anthropic", "dashscope"],
-        help="MLLM API 提供方（默认 vllm；可通过 MLLM_PROVIDER 环境变量配置）",
+        default=os.environ.get("MLLM_PROVIDER", DEFAULT_MLLM_PROVIDER),
+        choices=["vllm", "openai", "anthropic", "dashscope", "huawei_custom"],
+        help=f"MLLM API 提供方（默认 {DEFAULT_MLLM_PROVIDER}；可通过 MLLM_PROVIDER 环境变量配置）",
     )
     parser.add_argument(
         "--mllm-model",
-        default=os.environ.get("MLLM_MODEL", "qwen3.5:9b"),
-        help="MLLM 模型名（默认 qwen3.5:9b；通过 MLLM_MODEL 环境变量配置）",
+        default=os.environ.get("MLLM_MODEL", DEFAULT_MLLM_MODEL),
+        help=f"MLLM 模型名（默认 {DEFAULT_MLLM_MODEL}；通过 MLLM_MODEL 环境变量配置）",
     )
     parser.add_argument(
         "--mllm-api-key",
-        default=os.environ.get("DASHSCOPE_API_KEY", "")
+        default=os.environ.get("MLLM_API_KEY", "")
+        or os.environ.get("DASHSCOPE_API_KEY", "")
         or os.environ.get("VLLM_API_KEY", ""),
-        help="API Key（dashscope 必填；vllm 可空）",
+        help="API Key（openai/anthropic/dashscope 通常必填；vllm/huawei_custom 可空）",
     )
     parser.add_argument(
         "--mllm-base-url",
-        default=os.environ.get("DASHSCOPE_BASE_URL", "")
+        default=os.environ.get("MLLM_API_BASE_URL", "")
+        or os.environ.get("DASHSCOPE_BASE_URL", "")
         or os.environ.get("VLLM_OPENAI_BASE_URL", ""),
-        help="Base URL（vllm 默认代码内 localhost:8201/v1；dashscope 可设国际区）",
+        help=f"Base URL（huawei_custom 默认 {DEFAULT_MLLM_BASE_URL}；vllm 默认代码内 localhost:8201/v1；dashscope 可设国际区）",
+    )
+    parser.add_argument(
+        "--mllm-service-name",
+        default=os.environ.get("MLLM_API_SERVICE_NAME", DEFAULT_MLLM_SERVICE_NAME),
+        help=f"自定义 API 的 service_name（默认 {DEFAULT_MLLM_SERVICE_NAME}；仅 huawei_custom 需要）",
     )
     parser.add_argument(
         "--mllm-fps",

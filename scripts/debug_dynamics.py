@@ -61,6 +61,10 @@ from src.motion_logic.trajectory_curvature_scorer import (
     compute_trajectory_curvature_smoothness,
 )
 
+DEFAULT_MLLM_PROVIDER = "huawei_custom"
+DEFAULT_MLLM_MODEL = "Qwen3-VL-32B-Instruct"
+DEFAULT_MLLM_BASE_URL = "http://aitest-beta.rnd.huawei.com/v1"
+DEFAULT_MLLM_SERVICE_NAME = "simple_client"
 
 
 # ── 光流提取 ─────────────────────────────────────────────────
@@ -765,26 +769,46 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--enable-mllm", action="store_true", help="启用 MLLM 辅助判定")
     parser.add_argument(
         "--mllm-provider",
-        default=os.environ.get("MLLM_PROVIDER", "dashscope"),
-        choices=["vllm", "openai", "anthropic", "dashscope"],
-        help="MLLM API 提供方（默认 dashscope；可通过 MLLM_PROVIDER 环境变量配置）",
+        default=os.environ.get("MLLM_PROVIDER", DEFAULT_MLLM_PROVIDER),
+        choices=["vllm", "openai", "anthropic", "dashscope", "huawei_custom"],
+        help=(
+            "MLLM API 提供方"
+            f"（默认 {DEFAULT_MLLM_PROVIDER}；可通过 MLLM_PROVIDER 环境变量配置）"
+        ),
     )
     parser.add_argument(
         "--mllm-model",
-        default=os.environ.get("MLLM_MODEL", "qwen3-vl-8b-thinking"),
-        help="MLLM 模型名（默认 qwen3-vl-8b-thinking；通过 MLLM_MODEL 环境变量配置）",
+        default=os.environ.get("MLLM_MODEL", DEFAULT_MLLM_MODEL),
+        help=(
+            "MLLM 模型名"
+            f"（默认 {DEFAULT_MLLM_MODEL}；通过 MLLM_MODEL 环境变量配置）"
+        ),
     )
     parser.add_argument(
         "--mllm-api-key",
-        default=os.environ.get("DASHSCOPE_API_KEY", "")
+        default=os.environ.get("MLLM_API_KEY", "")
+        or os.environ.get("DASHSCOPE_API_KEY", "")
         or os.environ.get("VLLM_API_KEY", ""),
-        help="API Key（dashscope 必填；vllm 可空，空则使用 not-needed）",
+        help="API Key（openai/anthropic/dashscope 通常必填；vllm/huawei_custom 可空）",
     )
     parser.add_argument(
         "--mllm-base-url",
-        default=os.environ.get("DASHSCOPE_BASE_URL", "")
+        default=os.environ.get("MLLM_API_BASE_URL", "")
+        or os.environ.get("DASHSCOPE_BASE_URL", "")
         or os.environ.get("VLLM_OPENAI_BASE_URL", ""),
-        help="Base URL（vllm 默认 http://localhost:8201/v1；dashscope 可设国际区 endpoint）",
+        help=(
+            "Base URL"
+            f"（huawei_custom 默认 {DEFAULT_MLLM_BASE_URL}；"
+            "vllm 默认 http://localhost:8201/v1；dashscope 可设国际区 endpoint）"
+        ),
+    )
+    parser.add_argument(
+        "--mllm-service-name",
+        default=os.environ.get("MLLM_API_SERVICE_NAME", DEFAULT_MLLM_SERVICE_NAME),
+        help=(
+            "自定义 API 的 service_name"
+            f"（默认 {DEFAULT_MLLM_SERVICE_NAME}；仅 huawei_custom 需要）"
+        ),
     )
     parser.add_argument(
         "--mllm-fps",
@@ -912,16 +936,21 @@ def build_mllm_client(args: argparse.Namespace) -> MLLMClient | None:
     if not args.enable_mllm:
         return None
     api_key = (args.mllm_api_key or "").strip()
-    if args.mllm_provider != "vllm" and not api_key:
+    if args.mllm_provider in {"openai", "anthropic", "dashscope"} and not api_key:
         raise ValueError(
-            "启用 --enable-mllm 且非 vllm 时必须提供 --mllm-api-key 或设置 DASHSCOPE_API_KEY"
+            "启用 --enable-mllm 且 provider 为 openai/anthropic/dashscope 时，"
+            "必须提供 --mllm-api-key 或设置对应环境变量"
         )
+    base_url = (args.mllm_base_url or "").strip()
+    if args.mllm_provider == "huawei_custom" and not base_url:
+        base_url = DEFAULT_MLLM_BASE_URL
     cfg = MLLMConfig(
         backend="api",
         api_provider=args.mllm_provider,
         api_model=args.mllm_model,
         api_key=api_key or None,
-        api_base_url=(args.mllm_base_url or "").strip() or None,
+        api_base_url=base_url or None,
+        api_service_name=(args.mllm_service_name or "").strip() or DEFAULT_MLLM_SERVICE_NAME,
         dashscope_video_fps=args.mllm_fps,
     )
     return MLLMClient(cfg)

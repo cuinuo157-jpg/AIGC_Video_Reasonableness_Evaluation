@@ -36,6 +36,7 @@ class BiologicalAnomalyResult:
     mouth_anomalies: list[dict] = field(default_factory=list)
     body_anomalies: list[dict] = field(default_factory=list)
     mllm_anomalies: list[dict] = field(default_factory=list)
+    mllm_raw_result: dict[str, Any] | None = None
     # 各级得分
     level1_score: float = 1.0
     level2_score: float = 1.0
@@ -162,6 +163,7 @@ class BiologicalAnomalyAnalyzer:
         # ========== Level 3: MLLM 兜底 ==========
         l3_anomalies: list[dict] = []
         l3_score = 1.0
+        mllm_raw_result: dict[str, Any] | None = None
 
         if cfg.enable_mllm and self._mllm_client:
             suspicious = _collect_suspicious(all_l1 + all_l2)
@@ -178,6 +180,7 @@ class BiologicalAnomalyAnalyzer:
                         self._mllm_client,
                         max_crops=cfg.mllm_max_crops,
                     )
+                    mllm_raw_result = result
                     if not result.get("skipped"):
                         l3_anomalies = result.get("anomalies", [])
                         l3_score = 0.3 if result.get("has_anomalies") else 1.0
@@ -208,6 +211,7 @@ class BiologicalAnomalyAnalyzer:
             mouth_anomalies=mouth_all,
             body_anomalies=body_all,
             mllm_anomalies=l3_anomalies,
+            mllm_raw_result=mllm_raw_result,
             level1_score=l1_score,
             level2_score=l2_score,
             level3_score=l3_score,

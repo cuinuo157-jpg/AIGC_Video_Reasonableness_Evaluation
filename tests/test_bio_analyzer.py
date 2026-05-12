@@ -73,6 +73,7 @@ def test_bio_analyzer_mllm_disabled():
     analyzer = BiologicalAnomalyAnalyzer(mllm_client=None)
     result = analyzer.analyze(hub)
     assert result.mllm_anomalies == []
+    assert result.mllm_raw_result is None
     assert result.level3_score == 1.0
 
 
@@ -90,3 +91,5 @@ def test_bio_analyzer_with_mock_mllm():
     analyzer = BiologicalAnomalyAnalyzer(config=config, mllm_client=mock_mllm)
     result = analyzer.analyze(hub)
     assert result.applicable is True
+    assert result.mllm_raw_result is not None
+    assert result.mllm_raw_result["has_anomalies"] is False

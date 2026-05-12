@@ -76,6 +76,8 @@ def test_analyzer_vlm_returns_score():
     assert result.vlm_score == 0.85
     assert result.physics_score == 0.85
     assert result.vlm_reasoning == "场景正常"
+    assert result.vlm_raw_result is not None
+    assert result.vlm_raw_result["scene_type"] == "street"
 
 
 def test_analyzer_vlm_with_violations():
@@ -104,6 +106,7 @@ def test_analyzer_vlm_with_violations():
     assert result.physics_score == 0.2
     assert len(result.vlm_violations) == 1
     assert result.vlm_violations[0]["type"] == "direction_anomaly"
+    assert result.vlm_raw_result is not None
 
 
 # ── 降级测试 ──

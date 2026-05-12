@@ -634,14 +634,23 @@ input[type="file"] {
 }
 
 .highlights-block,
-.events-block {
+.events-block,
+.vlm-raw-block,
+.dimension-artifacts-block {
   margin-top: 18px;
 }
 
 .highlights-block h4,
-.events-block h4 {
+.events-block h4,
+.vlm-raw-block h4,
+.dimension-artifacts-block h4 {
   margin: 0 0 10px;
   font-size: 15px;
+}
+
+.dimension-artifact-list {
+  display: grid;
+  gap: 10px;
 }
 
 .highlights-list {
@@ -676,6 +685,29 @@ input[type="file"] {
 .event-item strong {
   display: block;
   margin-bottom: 6px;
+}
+
+.raw-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.raw-output-console {
+  margin: 0;
+  padding: 14px;
+  max-height: 260px;
+  overflow: auto;
+  border-radius: 16px;
+  border: 1px solid rgba(24, 32, 40, 0.14);
+  background: linear-gradient(180deg, rgba(24, 32, 40, 0.96), rgba(39, 47, 58, 0.98));
+  color: #d9e1e8;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .ghost-btn:hover,

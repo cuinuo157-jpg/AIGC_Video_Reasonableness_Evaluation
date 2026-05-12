@@ -18,6 +18,7 @@ class PhysicsConsistencyResult:
     vlm_score: float | None = None
     vlm_reasoning: str = ""
     vlm_violations: list[dict] = field(default_factory=list)
+    vlm_raw_result: dict[str, Any] | None = None
     physics_score: float = 1.0
 
 
@@ -49,6 +50,7 @@ class PhysicsConsistencyAnalyzer:
         vlm_score = None
         vlm_reasoning = ""
         vlm_violations: list[dict] = []
+        vlm_raw_result: dict[str, Any] | None = None
 
         if self.config.enable_mllm and self._mllm_client:
             from .mllm_physics_judge import judge_physics_mllm
@@ -56,6 +58,7 @@ class PhysicsConsistencyAnalyzer:
             result = judge_physics_mllm(
                 hub, self._mllm_client, drift_events=drift_events or None
             )
+            vlm_raw_result = result
             if not result.get("skipped"):
                 vlm_score = float(result.get("physics_score", 1.0))
                 vlm_score = float(np.clip(vlm_score, 0, 1))
@@ -75,5 +78,6 @@ class PhysicsConsistencyAnalyzer:
             vlm_score=vlm_score,
             vlm_reasoning=vlm_reasoning,
             vlm_violations=vlm_violations,
+            vlm_raw_result=vlm_raw_result,
             physics_score=float(np.clip(physics_score, 0, 1)),
         )

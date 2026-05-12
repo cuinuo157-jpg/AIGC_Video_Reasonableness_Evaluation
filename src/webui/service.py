@@ -72,6 +72,7 @@ DEFAULT_MAX_FRAMES = 48
 DEFAULT_MAX_SIDE = 640
 DEFAULT_UPLOAD_DIR = Path("outputs") / "webui_uploads"
 DEFAULT_RESULTS_DIR = Path("outputs") / "webui_results"
+DEFAULT_VISUALIZATION_DIR = Path("outputs") / "webui_artifacts"
 MAX_LOG_LINES = 800
 SUPPORTED_MLLM_PROVIDERS = ("vllm", "dashscope", "openai", "anthropic", "huawei_custom")
 
@@ -94,6 +95,8 @@ class WebUIRunConfig:
     mllm_base_url: str | None = None
     mllm_api_key: str | None = None
     mllm_service_name: str = MLLMConfig.api_service_name
+    save_visualizations: bool = False
+    visualization_root: str | None = os.fspath(DEFAULT_VISUALIZATION_DIR)
     parallel: bool = True
     max_workers: int | None = None
     video_config: VideoProcessingConfig = field(
@@ -116,6 +119,7 @@ class WebUIJob:
     result: dict[str, Any] | None = None
     result_json_path: str | None = None
     log_path: str | None = None
+    artifact_root: str | None = None
     error: str | None = None
     completed_at: float | None = None
 
@@ -205,6 +209,7 @@ class WebUIJobManager:
                 "error": job.error,
                 "result_json_path": job.result_json_path,
                 "log_path": job.log_path,
+                "artifact_root": job.artifact_root,
                 "has_result": job.result is not None,
                 "result": job.result,
             }
@@ -237,6 +242,12 @@ class WebUIJobManager:
         result_path = self.results_dir / f"{timestamp}_{stem}_{job.job_id}_report.json"
         log_path = self.results_dir / f"{timestamp}_{stem}_{job.job_id}.log"
         return result_path, log_path
+
+    def _build_artifact_dir(self, job: WebUIJob) -> Path:
+        stem = Path(job.run_config.video_path).stem[:80] or "video"
+        timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime(job.created_at))
+        base_dir = Path(job.run_config.visualization_root or DEFAULT_VISUALIZATION_DIR).resolve()
+        return base_dir / f"{timestamp}_{stem}_{job.job_id}"
 
     def _persist_job_outputs(
         self,
@@ -274,6 +285,10 @@ class WebUIJobManager:
             f"[job] AU 路由: backend={job.run_config.au_backend}, "
             f"external_python={job.run_config.au_external_python or '-'}"
         )
+        append(
+            f"[job] 可视化产物: {'开启' if job.run_config.save_visualizations else '关闭'}, "
+            f"root={job.run_config.visualization_root or '-'}"
+        )
         if job.run_config.enable_mllm:
             append(
                 f"[job] MLLM: provider={job.run_config.mllm_provider}, "
@@ -291,7 +306,14 @@ class WebUIJobManager:
 
         try:
             with redirect_stdout(tee_stdout), redirect_stderr(tee_stderr):
-                report, elapsed = run_analysis(job.run_config)
+                if job.run_config.save_visualizations:
+                    artifact_dir = self._build_artifact_dir(job)
+                    job.artifact_root = os.fspath(artifact_dir)
+                    report, elapsed, hub = run_analysis_with_hub(job.run_config)
+                else:
+                    report, elapsed = run_analysis(job.run_config)
+                    artifact_dir = None
+                    hub = None
             from .reporting import build_dashboard_report
 
             writer.flush()
@@ -299,6 +321,22 @@ class WebUIJobManager:
             result_json_path = os.fspath(result_path)
             log_path_str = os.fspath(log_path)
             payload = build_dashboard_report(report, job.run_config, elapsed)
+            if job.run_config.save_visualizations and artifact_dir is not None and hub is not None:
+                from .artifacts import generate_visual_artifacts
+
+                artifact_root, artifacts, artifacts_by_dimension = generate_visual_artifacts(
+                    report,
+                    job.run_config,
+                    hub,
+                    artifact_dir,
+                    log_fn=append,
+                )
+                payload["artifact_root"] = artifact_root
+                payload["artifacts"] = artifacts
+                for card in payload["dimensions"]:
+                    card["artifacts"] = artifacts_by_dimension.get(card["key"], [])
+                job.artifact_root = artifact_root
+                append(f"[job] 可视化产物已写入 {artifact_root}")
             payload["result_json_path"] = result_json_path
             payload["log_path"] = log_path_str
             job.result_json_path = result_json_path
@@ -402,6 +440,8 @@ def build_frontend_config() -> dict[str, Any]:
             "max_side": DEFAULT_MAX_SIDE,
             "au_backend": DEFAULT_AU_BACKEND,
             "au_external_python": DEFAULT_AU_EXTERNAL_PYTHON,
+            "save_visualizations": False,
+            "visualization_root": os.fspath(DEFAULT_VISUALIZATION_DIR),
             "enable_mllm": False,
             "mllm_provider": mllm_defaults.api_provider,
             "mllm_model": mllm_defaults.api_model,
@@ -467,6 +507,11 @@ def build_run_config(payload: dict[str, Any], uploaded_video_path: str | None = 
         str(payload.get("mllm_service_name", mllm_defaults.api_service_name)).strip()
         or mllm_defaults.api_service_name
     )
+    save_visualizations = _coerce_bool(payload.get("save_visualizations"), False)
+    visualization_root = (
+        str(payload.get("visualization_root", os.fspath(DEFAULT_VISUALIZATION_DIR))).strip()
+        or os.fspath(DEFAULT_VISUALIZATION_DIR)
+    )
 
     video_config = VideoProcessingConfig(
         sample_stride=_coerce_int(payload.get("sample_stride"), DEFAULT_SAMPLE_STRIDE, minimum=1) or 1,
@@ -488,6 +533,8 @@ def build_run_config(payload: dict[str, Any], uploaded_video_path: str | None = 
         mllm_base_url=mllm_base_url,
         mllm_api_key=mllm_api_key,
         mllm_service_name=mllm_service_name,
+        save_visualizations=save_visualizations,
+        visualization_root=visualization_root,
         parallel=_coerce_bool(payload.get("parallel"), True),
         max_workers=max_workers,
         video_config=video_config,
@@ -533,6 +580,47 @@ def run_analysis(config: WebUIRunConfig) -> tuple[Any, float]:
             max_workers=config.max_workers,
         )
     return report, time.perf_counter() - start_time
+
+
+def run_analysis_with_hub(config: WebUIRunConfig) -> tuple[Any, float, Any]:
+    mllm_client = None
+    if config.enable_mllm:
+        mllm_client = MLLMClient(
+            MLLMConfig(
+                backend="api",
+                api_provider=config.mllm_provider,
+                api_model=config.mllm_model,
+                api_key=config.mllm_api_key,
+                api_base_url=config.mllm_base_url,
+                api_service_name=config.mllm_service_name,
+            )
+        )
+    pipeline = EvaluationPipeline(
+        device=config.device,
+        enable_mllm=config.enable_mllm,
+        mllm_client=mllm_client,
+        video_config=config.video_config,
+        parallel=config.parallel,
+        max_workers=config.max_workers,
+        au_backend=config.au_backend,
+        au_external_python=config.au_external_python,
+    )
+    start_time = time.perf_counter()
+    if config.scope == "anomaly":
+        report, hub = pipeline.detect_anomalies_with_hub(
+            config.video_path,
+            anomaly_types=config.selected_dimensions,
+            parallel=config.parallel,
+            max_workers=config.max_workers,
+        )
+    else:
+        report, hub = pipeline.evaluate_with_hub(
+            config.video_path,
+            selected_dimensions=config.selected_dimensions,
+            parallel=config.parallel,
+            max_workers=config.max_workers,
+        )
+    return report, time.perf_counter() - start_time, hub
 
 
 def build_upload_path(filename: str, upload_dir: Path | None = None) -> Path:

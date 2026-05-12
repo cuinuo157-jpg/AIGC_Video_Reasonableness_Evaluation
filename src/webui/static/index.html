@@ -99,10 +99,19 @@
               <span>启用并发检测</span>
             </label>
             <label class="toggle">
+              <input type="checkbox" name="save_visualizations">
+              <span>输出可视化产物</span>
+            </label>
+            <label class="toggle">
               <input type="checkbox" name="enable_mllm">
               <span>启用 MLLM/VLM</span>
             </label>
           </div>
+
+          <label class="field">
+            <span>可视化输出目录</span>
+            <input type="text" name="visualization_root" placeholder="例如 outputs/webui_artifacts">
+          </label>
 
           <div class="field field-inline">
             <label>
@@ -184,6 +193,10 @@
               <span class="artifact-k">日志文件</span>
               <code id="log-path">-</code>
             </div>
+            <div class="artifact-item">
+              <span class="artifact-k">可视化目录</span>
+              <code id="artifact-root-path">-</code>
+            </div>
           </div>
         </div>
         <div class="log-console-wrap">
@@ -253,6 +266,16 @@
       <div class="events-block hidden">
         <h4>事件</h4>
         <div class="event-list"></div>
+      </div>
+      <div class="vlm-raw-block hidden">
+        <div class="raw-head">
+          <h4>VLM 原始输出</h4>
+        </div>
+        <pre class="raw-output-console"></pre>
+      </div>
+      <div class="dimension-artifacts-block hidden">
+        <h4>可视化产物</h4>
+        <div class="dimension-artifact-list"></div>
       </div>
     </article>
   </template>
