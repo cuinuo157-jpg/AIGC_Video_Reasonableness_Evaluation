@@ -1,6 +1,2 @@
-Traceback (most recent call last):
-  File "/data/AIGC_Video_Reasonableness_Evaluation/scripts/debug_expression.py", line 406, in <module>
-    main()
-  File "/data/AIGC_Video_Reasonableness_Evaluation/scripts/debug_expression.py", line 400, in main
-    json.dump(result_json, f, ensure_ascii=False, indent=2)
-NameError: name 'json' is not defined
+[WARNING] CameraCompensator 不可用，使用简化补偿
+[WARNING] SAM2 加载失败: No module named 'hydra'
