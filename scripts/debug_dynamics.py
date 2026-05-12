@@ -944,7 +944,7 @@ def build_mllm_client(args: argparse.Namespace) -> MLLMClient | None:
     base_url = (args.mllm_base_url or "").strip()
     if args.mllm_provider == "huawei_custom" and not base_url:
         base_url = DEFAULT_MLLM_BASE_URL
-    cfg = MLLMConfig(
+    cfg = MLLMConfig.from_env_with_overrides(
         backend="api",
         api_provider=args.mllm_provider,
         api_model=args.mllm_model,

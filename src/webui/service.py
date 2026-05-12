@@ -545,7 +545,7 @@ def run_analysis(config: WebUIRunConfig) -> tuple[Any, float]:
     mllm_client = None
     if config.enable_mllm:
         mllm_client = MLLMClient(
-            MLLMConfig(
+            MLLMConfig.from_env_with_overrides(
                 backend="api",
                 api_provider=config.mllm_provider,
                 api_model=config.mllm_model,
@@ -586,7 +586,7 @@ def run_analysis_with_hub(config: WebUIRunConfig) -> tuple[Any, float, Any]:
     mllm_client = None
     if config.enable_mllm:
         mllm_client = MLLMClient(
-            MLLMConfig(
+            MLLMConfig.from_env_with_overrides(
                 backend="api",
                 api_provider=config.mllm_provider,
                 api_model=config.mllm_model,

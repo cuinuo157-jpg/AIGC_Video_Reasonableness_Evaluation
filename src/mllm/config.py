@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import Any, ClassVar
 
 
 # ── 内部映射：字段名 → (env_优先, env_次优先, 类型转换) ──
@@ -89,3 +89,12 @@ class MLLMConfig:
         for field_name in _ENV_MAP:
             kwargs[field_name] = _read_env_or(field_name, getattr(cls, field_name, None))
         return cls(**kwargs)
+
+    @classmethod
+    def from_env_with_overrides(cls: type[MLLMConfig], **overrides: Any) -> MLLMConfig:
+        """先从环境变量构建，再用显式参数覆盖。"""
+        cfg = cls.from_env()
+        for field_name, value in overrides.items():
+            if value is not None:
+                setattr(cfg, field_name, value)
+        return cfg

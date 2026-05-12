@@ -14,6 +14,8 @@ import numpy as np
 from .config import MLLMConfig
 from .dashscope_video_reasonableness import parse_json_from_model_text
 
+_HUAWEI_CUSTOM_MAX_IMAGES = 10
+
 
 class MLLMClient:
     """统一 MLLM 调用接口，支持本地模型和 API 切换。"""
@@ -78,6 +80,8 @@ class MLLMClient:
     def _max_frames_for_encode(self) -> int:
         if self.config.api_provider == "vllm":
             return self.config.vllm_max_frames
+        if self.config.api_provider == "huawei_custom":
+            return min(self.config.max_frames, _HUAWEI_CUSTOM_MAX_IMAGES)
         return self.config.max_frames
 
     def _encode_frames(self, frames: list[np.ndarray]) -> list[str]:
@@ -204,7 +208,14 @@ class MLLMClient:
         )
         response.raise_for_status()
         result = response.json()
-        parsed = self._parse_custom_response_content(result)
+        try:
+            parsed = self._parse_custom_response_content(result)
+        except ValueError as exc:
+            raise ValueError(
+                "huawei_custom 返回了非 JSON 文本，通常表示上游服务直接报错。"
+                f" provider={self.config.api_provider}, images={len(images_b64)}, "
+                f"max_allowed={_HUAWEI_CUSTOM_MAX_IMAGES}, detail={exc}"
+            ) from exc
         if parsed is not None:
             return parsed
         raise ValueError(f"无法解析 huawei_custom 响应: {result!r}")
