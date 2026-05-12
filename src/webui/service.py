@@ -18,6 +18,7 @@ from src.expression_naturalness.au_extractor import (
     _DEFAULT_AU_PYTHON as DEFAULT_AU_EXTERNAL_PYTHON,
 )
 from src.feature_hub import VideoProcessingConfig
+from src.mllm import MLLMClient, MLLMConfig
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,11 @@ DEFAULT_MAX_SIDE = 640
 DEFAULT_UPLOAD_DIR = Path("outputs") / "webui_uploads"
 DEFAULT_RESULTS_DIR = Path("outputs") / "webui_results"
 MAX_LOG_LINES = 800
+SUPPORTED_MLLM_PROVIDERS = ("vllm", "dashscope", "openai", "anthropic", "huawei_custom")
+
+
+def _default_mllm_config() -> MLLMConfig:
+    return MLLMConfig.from_env()
 
 
 @dataclass(frozen=True)
@@ -83,6 +89,11 @@ class WebUIRunConfig:
     au_backend: str = DEFAULT_AU_BACKEND
     au_external_python: str = DEFAULT_AU_EXTERNAL_PYTHON
     enable_mllm: bool = False
+    mllm_provider: str = MLLMConfig.api_provider
+    mllm_model: str = MLLMConfig.api_model
+    mllm_base_url: str | None = None
+    mllm_api_key: str | None = None
+    mllm_service_name: str = MLLMConfig.api_service_name
     parallel: bool = True
     max_workers: int | None = None
     video_config: VideoProcessingConfig = field(
@@ -263,6 +274,13 @@ class WebUIJobManager:
             f"[job] AU 路由: backend={job.run_config.au_backend}, "
             f"external_python={job.run_config.au_external_python or '-'}"
         )
+        if job.run_config.enable_mllm:
+            append(
+                f"[job] MLLM: provider={job.run_config.mllm_provider}, "
+                f"model={job.run_config.mllm_model}, "
+                f"base_url={job.run_config.mllm_base_url or '-'}, "
+                f"service_name={job.run_config.mllm_service_name or '-'}"
+            )
 
         writer = _JobLogWriter(append)
         tee_stdout = _TeeWriter(sys.stdout, writer)
@@ -360,6 +378,7 @@ def available_dimensions(scope: str) -> list[dict[str, str]]:
 
 
 def build_frontend_config() -> dict[str, Any]:
+    mllm_defaults = _default_mllm_config()
     return {
         "scopes": [
             {
@@ -383,9 +402,16 @@ def build_frontend_config() -> dict[str, Any]:
             "max_side": DEFAULT_MAX_SIDE,
             "au_backend": DEFAULT_AU_BACKEND,
             "au_external_python": DEFAULT_AU_EXTERNAL_PYTHON,
+            "enable_mllm": False,
+            "mllm_provider": mllm_defaults.api_provider,
+            "mllm_model": mllm_defaults.api_model,
+            "mllm_base_url": mllm_defaults.api_base_url or "",
+            "mllm_api_key": "",
+            "mllm_service_name": mllm_defaults.api_service_name,
             "anomaly_types": list(DEFAULT_ANOMALY_TYPES),
             "selected_dimensions": list(FULL_DIMENSIONS),
         },
+        "mllm_providers": list(SUPPORTED_MLLM_PROVIDERS),
     }
 
 
@@ -402,6 +428,7 @@ def _normalize_dimensions(raw: list[str], scope: str) -> tuple[str, ...]:
 
 
 def build_run_config(payload: dict[str, Any], uploaded_video_path: str | None = None) -> WebUIRunConfig:
+    mllm_defaults = _default_mllm_config()
     video_path = uploaded_video_path or str(payload.get("video_path", "")).strip()
     if not video_path:
         raise ValueError("请提供视频文件或本地视频路径")
@@ -419,6 +446,27 @@ def build_run_config(payload: dict[str, Any], uploaded_video_path: str | None = 
         str(payload.get("au_external_python", DEFAULT_AU_EXTERNAL_PYTHON)).strip()
         or DEFAULT_AU_EXTERNAL_PYTHON
     )
+    enable_mllm = _coerce_bool(payload.get("enable_mllm"), False)
+    mllm_provider = (
+        str(payload.get("mllm_provider", mllm_defaults.api_provider)).strip().lower()
+        or mllm_defaults.api_provider
+    )
+    if mllm_provider not in SUPPORTED_MLLM_PROVIDERS:
+        raise ValueError(f"不支持的 MLLM provider: {mllm_provider}")
+    mllm_model = (
+        str(payload.get("mllm_model", mllm_defaults.api_model)).strip()
+        or mllm_defaults.api_model
+    )
+    mllm_base_url = str(payload.get("mllm_base_url", mllm_defaults.api_base_url or "")).strip() or None
+    mllm_api_key = (
+        str(payload.get("mllm_api_key", mllm_defaults.api_key or "")).strip()
+        or mllm_defaults.api_key
+        or None
+    )
+    mllm_service_name = (
+        str(payload.get("mllm_service_name", mllm_defaults.api_service_name)).strip()
+        or mllm_defaults.api_service_name
+    )
 
     video_config = VideoProcessingConfig(
         sample_stride=_coerce_int(payload.get("sample_stride"), DEFAULT_SAMPLE_STRIDE, minimum=1) or 1,
@@ -434,7 +482,12 @@ def build_run_config(payload: dict[str, Any], uploaded_video_path: str | None = 
         device=device,
         au_backend=au_backend,
         au_external_python=au_external_python,
-        enable_mllm=_coerce_bool(payload.get("enable_mllm"), False),
+        enable_mllm=enable_mllm,
+        mllm_provider=mllm_provider,
+        mllm_model=mllm_model,
+        mllm_base_url=mllm_base_url,
+        mllm_api_key=mllm_api_key,
+        mllm_service_name=mllm_service_name,
         parallel=_coerce_bool(payload.get("parallel"), True),
         max_workers=max_workers,
         video_config=video_config,
@@ -442,9 +495,22 @@ def build_run_config(payload: dict[str, Any], uploaded_video_path: str | None = 
 
 
 def run_analysis(config: WebUIRunConfig) -> tuple[Any, float]:
+    mllm_client = None
+    if config.enable_mllm:
+        mllm_client = MLLMClient(
+            MLLMConfig(
+                backend="api",
+                api_provider=config.mllm_provider,
+                api_model=config.mllm_model,
+                api_key=config.mllm_api_key,
+                api_base_url=config.mllm_base_url,
+                api_service_name=config.mllm_service_name,
+            )
+        )
     pipeline = EvaluationPipeline(
         device=config.device,
         enable_mllm=config.enable_mllm,
+        mllm_client=mllm_client,
         video_config=config.video_config,
         parallel=config.parallel,
         max_workers=config.max_workers,

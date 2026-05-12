@@ -127,3 +127,69 @@ def test_mllm_client_vllm_clip_no_response_format():
     mock_client.chat.completions.create.assert_called_once()
     create_kw = mock_client.chat.completions.create.call_args.kwargs
     assert "response_format" not in create_kw
+
+
+def test_mllm_client_huawei_custom_clip_call():
+    config = MLLMConfig(
+        backend="api",
+        api_provider="huawei_custom",
+        api_model="Qwen3-VL-32B-Instruct",
+        api_base_url="http://aitest-beta.rnd.huawei.com/v1",
+        api_service_name="simple_client",
+        api_system_prompt="你是一位专业的 AI 助手",
+        vllm_timeout=45,
+    )
+    client = MLLMClient(config)
+    frames = [np.zeros((12, 12, 3), dtype=np.uint8) for _ in range(2)]
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "code": 0,
+        "message": '{"has_violations": false, "physics_score": 0.91}',
+        "request_id": "abc123",
+    }
+
+    with patch("requests.post", return_value=mock_response) as mock_post:
+        out = client.judge_video_clip(frames, "请判断该视频是否违反物理常识")
+
+    assert out == {"has_violations": False, "physics_score": 0.91}
+    mock_response.raise_for_status.assert_called_once()
+    mock_post.assert_called_once()
+    kwargs = mock_post.call_args.kwargs
+    assert kwargs["json"]["model_type"] == "Qwen3-VL-32B-Instruct"
+    assert kwargs["json"]["service_name"] == "simple_client"
+    assert kwargs["json"]["system_content"] == "你是一位专业的 AI 助手"
+    assert kwargs["timeout"] == 45.0
+    assert kwargs["headers"]["Content-Type"] == "application/json"
+    user_content = kwargs["json"]["user_content"]
+    assert user_content[-1]["type"] == "text"
+    assert user_content[-1]["text"] == "请判断该视频是否违反物理常识"
+    assert user_content[0]["type"] == "image_url"
+
+
+def test_mllm_client_huawei_custom_parses_nested_message_dict():
+    config = MLLMConfig(
+        backend="api",
+        api_provider="huawei_custom",
+        api_model="Qwen3-VL-32B-Instruct",
+        api_base_url="http://aitest-beta.rnd.huawei.com/v1",
+    )
+    client = MLLMClient(config)
+    frames = [np.zeros((8, 8, 3), dtype=np.uint8)]
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "code": 0,
+        "data": {
+            "message": {
+                "summary": "正常",
+                "issues": [],
+                "is_reasonable": True,
+            }
+        },
+    }
+
+    with patch("requests.post", return_value=mock_response):
+        out = client.judge_video_clip(frames, "请分析")
+
+    assert out["is_reasonable"] is True

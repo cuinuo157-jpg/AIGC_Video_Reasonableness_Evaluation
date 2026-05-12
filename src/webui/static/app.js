@@ -145,6 +145,12 @@ function fillDemo() {
   form.elements.device.value = state.config.defaults.device;
   form.elements.au_backend.value = state.config.defaults.au_backend;
   form.elements.au_external_python.value = state.config.defaults.au_external_python;
+  form.elements.enable_mllm.checked = Boolean(state.config.defaults.enable_mllm);
+  form.elements.mllm_provider.value = state.config.defaults.mllm_provider;
+  form.elements.mllm_model.value = state.config.defaults.mllm_model;
+  form.elements.mllm_base_url.value = state.config.defaults.mllm_base_url;
+  form.elements.mllm_api_key.value = state.config.defaults.mllm_api_key;
+  form.elements.mllm_service_name.value = state.config.defaults.mllm_service_name;
   form.elements.sample_stride.value = state.config.defaults.sample_stride;
   form.elements.max_frames.value = state.config.defaults.max_frames;
   form.elements.max_side.value = state.config.defaults.max_side;
@@ -157,6 +163,11 @@ function collectFormData() {
     "device",
     "au_backend",
     "au_external_python",
+    "mllm_provider",
+    "mllm_model",
+    "mllm_base_url",
+    "mllm_api_key",
+    "mllm_service_name",
     "sample_stride",
     "max_frames",
     "max_side",
@@ -245,6 +256,7 @@ function renderResults(data) {
     `采样步长 ${data.video_processing.sample_stride} / 最大帧 ${data.video_processing.max_frames ?? "不限"}`,
     `并发 ${data.video_processing.parallel ? "开启" : "关闭"} / worker ${data.video_processing.max_workers ?? "auto"}`,
     `AU ${data.video_processing.au_backend} / ${data.video_processing.au_external_python || "-"}`,
+    `MLLM ${data.video_processing.enable_mllm ? `${data.video_processing.mllm_provider} / ${data.video_processing.mllm_model}` : "关闭"}`,
   ].forEach((text) => {
     const chip = document.createElement("div");
     chip.className = "meta-chip";

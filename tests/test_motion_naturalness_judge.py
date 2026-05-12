@@ -61,3 +61,24 @@ def test_judge_naturalness_mllm_falls_back_to_frames_for_non_dashscope():
 
     assert result["is_natural"] is True
     mllm_client.judge_video_clip.assert_called_once()
+
+
+def test_judge_naturalness_mllm_falls_back_to_frames_for_huawei_custom():
+    frames = [np.zeros((8, 8, 3), dtype=np.uint8)]
+    hub = MagicMock()
+    hub.video_path = "D:/tmp/demo.mp4"
+    hub.get.side_effect = lambda k: frames if k == "video_frames" else KeyError(k)
+    mllm_client = MagicMock()
+    mllm_client.config = SimpleNamespace(api_provider="huawei_custom")
+    mllm_client.judge_video_clip.return_value = {"is_reasonable": True, "issues": []}
+
+    result = judge_naturalness_mllm(
+        hub=hub,
+        mllm_client=mllm_client,
+        flows=[(np.zeros((4, 4)), np.zeros((4, 4)))],
+        smoothness_score=0.3,
+    )
+
+    assert result["is_reasonable"] is True
+    mllm_client.judge_video_clip.assert_called_once()
+    mllm_client.judge_video_path.assert_not_called()

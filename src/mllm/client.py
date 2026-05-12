@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import uuid
 from typing import Any
 
 import cv2
@@ -47,6 +48,8 @@ class MLLMClient:
             )
         elif self.config.api_provider == "vllm":
             return self._call_vllm_openai(images_b64, prompt)
+        elif self.config.api_provider == "huawei_custom":
+            return self._call_huawei_custom(images_b64, prompt)
         raise ValueError(f"Unknown provider: {self.config.api_provider}")
 
     def judge_video_path(self, video_path: str, prompt: str, *, fps: int | None = None) -> dict:
@@ -144,6 +147,67 @@ class MLLMClient:
         if self.config.api_key and str(self.config.api_key).strip():
             return str(self.config.api_key).strip()
         return os.environ.get("VLLM_API_KEY", "not-needed")
+
+    def _resolve_custom_api_base_url(self) -> str:
+        if self.config.api_base_url and self.config.api_base_url.strip():
+            return self.config.api_base_url.strip().rstrip("/")
+        raise ValueError(
+            "huawei_custom provider requires api_base_url. "
+            "Please set MLLM_API_BASE_URL."
+        )
+
+    def _build_custom_user_content(self, images_b64: list[str], prompt: str) -> list[dict[str, Any]]:
+        content: list[dict[str, Any]] = []
+        for img in images_b64:
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{img}"},
+                }
+            )
+        content.append({"type": "text", "text": prompt})
+        return content
+
+    def _parse_custom_response_content(self, value: Any) -> dict[str, Any] | None:
+        wrapper_keys = {"code", "message", "request_id", "data", "result", "output", "status"}
+        if isinstance(value, dict):
+            if not set(value.keys()).issubset(wrapper_keys):
+                return value
+            for key in ("message", "data", "result", "output"):
+                nested = value.get(key)
+                parsed = self._parse_custom_response_content(nested)
+                if parsed is not None:
+                    return parsed
+            return None
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return None
+            return parse_json_from_model_text(text)
+        return None
+
+    def _call_huawei_custom(self, images_b64: list[str], prompt: str) -> dict:
+        import requests
+
+        payload = {
+            "model_type": self.config.api_model,
+            "user_content": self._build_custom_user_content(images_b64, prompt),
+            "system_content": self.config.api_system_prompt,
+            "service_name": self.config.api_service_name,
+            "request_id": uuid.uuid4().hex,
+        }
+        response = requests.post(
+            self._resolve_custom_api_base_url(),
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=float(self.config.vllm_timeout),
+        )
+        response.raise_for_status()
+        result = response.json()
+        parsed = self._parse_custom_response_content(result)
+        if parsed is not None:
+            return parsed
+        raise ValueError(f"无法解析 huawei_custom 响应: {result!r}")
 
     def _call_vllm_openai(self, images_b64: list[str], prompt: str) -> dict:
         from .vllm_openai_video import (

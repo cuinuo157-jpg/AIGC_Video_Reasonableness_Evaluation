@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from src.evaluation_pipeline import DimensionResult, EvaluationReport
+from src.mllm.config import MLLMConfig
 from src.webui.reporting import build_dashboard_report
 from src.webui import service as webui_service
 from src.webui.service import build_frontend_config, build_run_config
@@ -19,6 +20,8 @@ def test_build_frontend_config_contains_scopes():
     assert "anomaly_types" in config["defaults"]
     assert config["defaults"]["au_backend"] == "subprocess"
     assert config["defaults"]["au_external_python"]
+    assert config["defaults"]["mllm_provider"] == MLLMConfig.api_provider
+    assert "huawei_custom" in config["mllm_providers"]
 
 
 def test_build_run_config_uses_scope_defaults(tmp_path: Path):
@@ -44,6 +47,8 @@ def test_build_run_config_uses_scope_defaults(tmp_path: Path):
     assert config.video_config.max_side == 512
     assert config.au_backend == "subprocess"
     assert config.au_external_python
+    assert config.mllm_provider == MLLMConfig.api_provider
+    assert config.mllm_model == MLLMConfig.api_model
     assert "physics" in config.selected_dimensions
 
 
@@ -62,6 +67,31 @@ def test_build_run_config_accepts_au_routing_values(tmp_path: Path):
 
     assert config.au_backend == "local"
     assert config.au_external_python == "D:/custom/pyfeat/python.exe"
+
+
+def test_build_run_config_accepts_mllm_values(tmp_path: Path):
+    video_path = tmp_path / "demo.mp4"
+    video_path.write_bytes(b"fake")
+
+    config = build_run_config(
+        {
+            "video_path": str(video_path),
+            "scope": "anomaly",
+            "enable_mllm": "true",
+            "mllm_provider": "huawei_custom",
+            "mllm_model": "Qwen3-VL-32B-Instruct",
+            "mllm_base_url": "http://aitest-beta.rnd.huawei.com/v1",
+            "mllm_api_key": "test-key",
+            "mllm_service_name": "simple_client",
+        }
+    )
+
+    assert config.enable_mllm is True
+    assert config.mllm_provider == "huawei_custom"
+    assert config.mllm_model == "Qwen3-VL-32B-Instruct"
+    assert config.mllm_base_url == "http://aitest-beta.rnd.huawei.com/v1"
+    assert config.mllm_api_key == "test-key"
+    assert config.mllm_service_name == "simple_client"
 
 
 def test_build_dashboard_report_summarizes_dimension_cards(tmp_path: Path):
@@ -110,8 +140,53 @@ def test_build_dashboard_report_summarizes_dimension_cards(tmp_path: Path):
     assert payload["dimensions"][0]["label"] == "身份一致性"
     assert payload["dimensions"][0]["metrics"][0]["label"] == "身份分"
     assert payload["dimensions"][1]["applicable"] is False
+    assert payload["video_processing"]["mllm_provider"] == run_config.mllm_provider
+    assert payload["video_processing"]["mllm_model"] == run_config.mllm_model
     assert payload["video_processing"]["au_backend"] == run_config.au_backend
     assert payload["video_processing"]["au_external_python"] == run_config.au_external_python
+
+
+def test_run_analysis_builds_mllm_client(tmp_path: Path, monkeypatch):
+    video_path = tmp_path / "demo.mp4"
+    video_path.write_bytes(b"fake")
+    run_config = build_run_config(
+        {
+            "video_path": str(video_path),
+            "scope": "anomaly",
+            "enable_mllm": "true",
+            "mllm_provider": "huawei_custom",
+            "mllm_model": "Qwen3-VL-32B-Instruct",
+            "mllm_base_url": "http://aitest-beta.rnd.huawei.com/v1",
+            "mllm_api_key": "test-key",
+            "mllm_service_name": "simple_client",
+        }
+    )
+
+    captured = {}
+
+    class DummyPipeline:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def detect_anomalies(self, *_args, **_kwargs):
+            return EvaluationReport(
+                dimensions={},
+                active_dimensions=[],
+                final_score=0.0,
+            )
+
+    monkeypatch.setattr(webui_service, "EvaluationPipeline", DummyPipeline)
+
+    report, elapsed = webui_service.run_analysis(run_config)
+
+    assert isinstance(report, EvaluationReport)
+    assert elapsed >= 0
+    assert captured["enable_mllm"] is True
+    assert captured["mllm_client"] is not None
+    assert captured["mllm_client"].config.api_provider == "huawei_custom"
+    assert captured["mllm_client"].config.api_model == "Qwen3-VL-32B-Instruct"
+    assert captured["mllm_client"].config.api_base_url == "http://aitest-beta.rnd.huawei.com/v1"
+    assert captured["mllm_client"].config.api_service_name == "simple_client"
 
 
 def test_job_manager_streams_logs_and_persists_outputs(tmp_path: Path, monkeypatch):
@@ -122,6 +197,11 @@ def test_job_manager_streams_logs_and_persists_outputs(tmp_path: Path, monkeypat
             "video_path": str(video_path),
             "scope": "anomaly",
             "anomaly_types": ["face_identity"],
+            "enable_mllm": "true",
+            "mllm_provider": "huawei_custom",
+            "mllm_model": "Qwen3-VL-32B-Instruct",
+            "mllm_base_url": "http://aitest-beta.rnd.huawei.com/v1",
+            "mllm_service_name": "simple_client",
         }
     )
 
@@ -178,6 +258,7 @@ def test_job_manager_streams_logs_and_persists_outputs(tmp_path: Path, monkeypat
     assert any("stderr ready" in line for line in all_logs["lines"])
     assert any("warning ready" in line for line in all_logs["lines"])
     assert any("AU 路由" in line for line in all_logs["lines"])
+    assert any("MLLM:" in line for line in all_logs["lines"])
 
     sliced_logs = manager.get_job_logs(job.job_id, offset=2)
     assert sliced_logs["offset"] == 2

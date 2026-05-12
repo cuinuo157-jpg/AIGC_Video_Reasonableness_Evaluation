@@ -13,8 +13,10 @@ _ENV_MAP: dict[str, tuple[tuple[str, ...], type]] = {
     "local_model_path": (("MLLM_LOCAL_MODEL_PATH",), str),
     "api_provider": (("MLLM_PROVIDER",), str),
     "api_model": (("MLLM_MODEL",), str),
-    "api_key": (("DASHSCOPE_API_KEY", "VLLM_API_KEY"), str),
-    "api_base_url": (("DASHSCOPE_BASE_URL", "VLLM_OPENAI_BASE_URL"), str),
+    "api_key": (("MLLM_API_KEY", "DASHSCOPE_API_KEY", "VLLM_API_KEY"), str),
+    "api_base_url": (("MLLM_API_BASE_URL", "DASHSCOPE_BASE_URL", "VLLM_OPENAI_BASE_URL"), str),
+    "api_service_name": (("MLLM_API_SERVICE_NAME",), str),
+    "api_system_prompt": (("MLLM_API_SYSTEM_PROMPT",), str),
     "dashscope_video_fps": (("MLLM_FPS",), int),
     "max_frames": (("MLLM_MAX_FRAMES",), int),
     "vllm_max_frames": (("MLLM_VLLM_MAX_FRAMES",), int),
@@ -50,6 +52,8 @@ class MLLMConfig:
     例如 MLLM_PROVIDER、MLLM_MODEL、MLLM_FPS 等。
 
     特殊别名（向后兼容）:
+      MLLM_API_KEY       → api_key
+      MLLM_API_BASE_URL  → api_base_url
       DASHSCOPE_API_KEY  → api_key
       DASHSCOPE_BASE_URL → api_base_url
       VLLM_API_KEY       → api_key（次优先）
@@ -67,6 +71,8 @@ class MLLMConfig:
     api_model: str = "qwen3.5:9b"
     api_key: str | None = None
     api_base_url: str | None = None
+    api_service_name: str = "aigc_video_reasonableness_evaluation"
+    api_system_prompt: str = "你是一位专业的 AI 助手"
     dashscope_video_fps: int = 2
     max_frames: int = 16
     vllm_max_frames: int = 5

@@ -31,6 +31,7 @@ dependencies = [
     "timm==1.0.27",
     "openai==2.36.0",
     "anthropic==0.100.0",
+    "requests==2.32.5",
 ]
 
 [project.optional-dependencies]
