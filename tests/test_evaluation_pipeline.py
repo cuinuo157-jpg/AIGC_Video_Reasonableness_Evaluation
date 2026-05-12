@@ -141,7 +141,11 @@ def test_detect_anomalies_defaults_to_five_types():
 
 def test_pipeline_passes_video_config_to_hub_factory():
     cfg = VideoProcessingConfig(sample_stride=3, max_frames=24, max_side=640)
-    pipeline = EvaluationPipeline(video_config=cfg)
+    pipeline = EvaluationPipeline(
+        video_config=cfg,
+        au_backend="subprocess",
+        au_external_python="D:/envs/pyfeat/python.exe",
+    )
 
     with patch("src.evaluation_pipeline.create_default_hub") as mock_create_default_hub:
         pipeline._create_hub("test.mp4")
@@ -150,4 +154,8 @@ def test_pipeline_passes_video_config_to_hub_factory():
         "test.mp4",
         pipeline.device,
         video_config=cfg,
+        runtime_options={
+            "au_backend": "subprocess",
+            "au_external_python": "D:/envs/pyfeat/python.exe",
+        },
     )

@@ -57,10 +57,26 @@
               <input type="text" name="device" value="cuda">
             </label>
             <label>
+              <span>AU 后端</span>
+              <select name="au_backend">
+                <option value="subprocess">subprocess</option>
+                <option value="local">local</option>
+              </select>
+            </label>
+            <label>
               <span>最大线程</span>
               <input type="number" name="max_workers" min="1" placeholder="自动">
             </label>
           </div>
+
+          <label class="field">
+            <span>Py-Feat Python 路径</span>
+            <input
+              type="text"
+              name="au_external_python"
+              placeholder="例如 D:\ProgramData\Anaconda3\envs\pyfeat\python.exe"
+            >
+          </label>
 
           <div class="field field-inline">
             <label>

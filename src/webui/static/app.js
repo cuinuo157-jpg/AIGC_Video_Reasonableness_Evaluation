@@ -143,6 +143,8 @@ function renderDimensionOptions() {
 function fillDemo() {
   form.elements.video_path.value = "data/sample.mp4";
   form.elements.device.value = state.config.defaults.device;
+  form.elements.au_backend.value = state.config.defaults.au_backend;
+  form.elements.au_external_python.value = state.config.defaults.au_external_python;
   form.elements.sample_stride.value = state.config.defaults.sample_stride;
   form.elements.max_frames.value = state.config.defaults.max_frames;
   form.elements.max_side.value = state.config.defaults.max_side;
@@ -150,7 +152,16 @@ function fillDemo() {
 
 function collectFormData() {
   const payload = new FormData();
-  const plainElements = ["video_path", "device", "sample_stride", "max_frames", "max_side", "max_workers"];
+  const plainElements = [
+    "video_path",
+    "device",
+    "au_backend",
+    "au_external_python",
+    "sample_stride",
+    "max_frames",
+    "max_side",
+    "max_workers",
+  ];
   plainElements.forEach((name) => {
     const value = form.elements[name].value;
     if (value !== "") {
@@ -233,6 +244,7 @@ function renderResults(data) {
     `活跃维度 ${data.active_dimensions.length}/${data.selected_dimensions.length}`,
     `采样步长 ${data.video_processing.sample_stride} / 最大帧 ${data.video_processing.max_frames ?? "不限"}`,
     `并发 ${data.video_processing.parallel ? "开启" : "关闭"} / worker ${data.video_processing.max_workers ?? "auto"}`,
+    `AU ${data.video_processing.au_backend} / ${data.video_processing.au_external_python || "-"}`,
   ].forEach((text) => {
     const chip = document.createElement("div");
     chip.className = "meta-chip";

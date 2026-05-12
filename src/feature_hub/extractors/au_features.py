@@ -43,7 +43,13 @@ def extract_au_features(
     try:
         from src.expression_naturalness.au_extractor import AUExtractor
 
-        extractor = AUExtractor()
+        runtime_options = getattr(hub, "runtime_options", {}) or {}
+        backend = runtime_options.get("au_backend")
+        external_python = runtime_options.get("au_external_python")
+        extractor = AUExtractor(
+            backend=backend,
+            external_python=external_python,
+        )
         return extractor.extract_sequence(frames)
     except (ImportError, Exception) as e:
         logger.warning("AU 特征提取失败 (%s)", e)

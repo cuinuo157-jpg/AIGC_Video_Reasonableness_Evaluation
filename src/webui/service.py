@@ -13,6 +13,10 @@ from pathlib import Path
 from typing import Any
 
 from src.evaluation_pipeline import DEFAULT_ANOMALY_TYPES, DEFAULT_WEIGHTS, EvaluationPipeline
+from src.expression_naturalness.au_extractor import (
+    _DEFAULT_AU_BACKEND as DEFAULT_AU_BACKEND,
+    _DEFAULT_AU_PYTHON as DEFAULT_AU_EXTERNAL_PYTHON,
+)
 from src.feature_hub import VideoProcessingConfig
 
 logger = logging.getLogger(__name__)
@@ -76,6 +80,8 @@ class WebUIRunConfig:
     scope: str
     selected_dimensions: tuple[str, ...]
     device: str = DEFAULT_DEVICE
+    au_backend: str = DEFAULT_AU_BACKEND
+    au_external_python: str = DEFAULT_AU_EXTERNAL_PYTHON
     enable_mllm: bool = False
     parallel: bool = True
     max_workers: int | None = None
@@ -253,6 +259,10 @@ class WebUIJobManager:
             f"[job] 范围={job.run_config.scope}, 维度={','.join(job.run_config.selected_dimensions)}, "
             f"device={job.run_config.device}, parallel={job.run_config.parallel}"
         )
+        append(
+            f"[job] AU 路由: backend={job.run_config.au_backend}, "
+            f"external_python={job.run_config.au_external_python or '-'}"
+        )
 
         writer = _JobLogWriter(append)
         tee_stdout = _TeeWriter(sys.stdout, writer)
@@ -371,6 +381,8 @@ def build_frontend_config() -> dict[str, Any]:
             "sample_stride": DEFAULT_SAMPLE_STRIDE,
             "max_frames": DEFAULT_MAX_FRAMES,
             "max_side": DEFAULT_MAX_SIDE,
+            "au_backend": DEFAULT_AU_BACKEND,
+            "au_external_python": DEFAULT_AU_EXTERNAL_PYTHON,
             "anomaly_types": list(DEFAULT_ANOMALY_TYPES),
             "selected_dimensions": list(FULL_DIMENSIONS),
         },
@@ -400,6 +412,13 @@ def build_run_config(payload: dict[str, Any], uploaded_video_path: str | None = 
     selection_key = "selected_dimensions" if scope == "full" else "anomaly_types"
     selected_dimensions = _normalize_dimensions(_coerce_list(payload.get(selection_key)), scope)
     device = str(payload.get("device", DEFAULT_DEVICE)).strip() or DEFAULT_DEVICE
+    au_backend = str(payload.get("au_backend", DEFAULT_AU_BACKEND)).strip().lower() or DEFAULT_AU_BACKEND
+    if au_backend not in {"local", "subprocess"}:
+        raise ValueError(f"不支持的 AU 后端: {au_backend}")
+    au_external_python = (
+        str(payload.get("au_external_python", DEFAULT_AU_EXTERNAL_PYTHON)).strip()
+        or DEFAULT_AU_EXTERNAL_PYTHON
+    )
 
     video_config = VideoProcessingConfig(
         sample_stride=_coerce_int(payload.get("sample_stride"), DEFAULT_SAMPLE_STRIDE, minimum=1) or 1,
@@ -413,6 +432,8 @@ def build_run_config(payload: dict[str, Any], uploaded_video_path: str | None = 
         scope=scope,
         selected_dimensions=selected_dimensions,
         device=device,
+        au_backend=au_backend,
+        au_external_python=au_external_python,
         enable_mllm=_coerce_bool(payload.get("enable_mllm"), False),
         parallel=_coerce_bool(payload.get("parallel"), True),
         max_workers=max_workers,
@@ -427,6 +448,8 @@ def run_analysis(config: WebUIRunConfig) -> tuple[Any, float]:
         video_config=config.video_config,
         parallel=config.parallel,
         max_workers=config.max_workers,
+        au_backend=config.au_backend,
+        au_external_python=config.au_external_python,
     )
     start_time = time.perf_counter()
     if config.scope == "anomaly":

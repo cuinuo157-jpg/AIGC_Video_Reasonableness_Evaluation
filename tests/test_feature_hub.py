@@ -56,6 +56,15 @@ def test_hub_keeps_video_config():
     assert hub.video_config == cfg
 
 
+def test_hub_keeps_runtime_options():
+    runtime_options = {
+        "au_backend": "subprocess",
+        "au_external_python": "D:/envs/pyfeat/python.exe",
+    }
+    hub = FeatureHub(video_path="test.mp4", device="cpu", runtime_options=runtime_options)
+    assert hub.runtime_options == runtime_options
+
+
 def test_hub_parallel_get_only_computes_once():
     hub = FeatureHub(video_path="test.mp4", device="cpu")
     call_count = 0

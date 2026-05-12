@@ -313,6 +313,8 @@ def build_dashboard_report(
             "parallel": run_config.parallel,
             "max_workers": run_config.max_workers,
             "enable_mllm": run_config.enable_mllm,
+            "au_backend": run_config.au_backend,
+            "au_external_python": run_config.au_external_python,
         },
         "summary": {
             "dimension_count": len(cards),

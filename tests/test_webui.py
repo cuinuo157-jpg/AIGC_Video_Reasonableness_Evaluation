@@ -17,6 +17,8 @@ def test_build_frontend_config_contains_scopes():
     scopes = {item["key"] for item in config["scopes"]}
     assert scopes == {"anomaly", "full"}
     assert "anomaly_types" in config["defaults"]
+    assert config["defaults"]["au_backend"] == "subprocess"
+    assert config["defaults"]["au_external_python"]
 
 
 def test_build_run_config_uses_scope_defaults(tmp_path: Path):
@@ -40,7 +42,26 @@ def test_build_run_config_uses_scope_defaults(tmp_path: Path):
     assert config.video_config.sample_stride == 3
     assert config.video_config.max_frames == 24
     assert config.video_config.max_side == 512
+    assert config.au_backend == "subprocess"
+    assert config.au_external_python
     assert "physics" in config.selected_dimensions
+
+
+def test_build_run_config_accepts_au_routing_values(tmp_path: Path):
+    video_path = tmp_path / "demo.mp4"
+    video_path.write_bytes(b"fake")
+
+    config = build_run_config(
+        {
+            "video_path": str(video_path),
+            "scope": "anomaly",
+            "au_backend": "local",
+            "au_external_python": "D:/custom/pyfeat/python.exe",
+        }
+    )
+
+    assert config.au_backend == "local"
+    assert config.au_external_python == "D:/custom/pyfeat/python.exe"
 
 
 def test_build_dashboard_report_summarizes_dimension_cards(tmp_path: Path):
@@ -89,6 +110,8 @@ def test_build_dashboard_report_summarizes_dimension_cards(tmp_path: Path):
     assert payload["dimensions"][0]["label"] == "身份一致性"
     assert payload["dimensions"][0]["metrics"][0]["label"] == "身份分"
     assert payload["dimensions"][1]["applicable"] is False
+    assert payload["video_processing"]["au_backend"] == run_config.au_backend
+    assert payload["video_processing"]["au_external_python"] == run_config.au_external_python
 
 
 def test_job_manager_streams_logs_and_persists_outputs(tmp_path: Path, monkeypatch):
@@ -154,6 +177,7 @@ def test_job_manager_streams_logs_and_persists_outputs(tmp_path: Path, monkeypat
     assert any("stdout ready" in line for line in all_logs["lines"])
     assert any("stderr ready" in line for line in all_logs["lines"])
     assert any("warning ready" in line for line in all_logs["lines"])
+    assert any("AU 路由" in line for line in all_logs["lines"])
 
     sliced_logs = manager.get_job_logs(job.job_id, offset=2)
     assert sliced_logs["offset"] == 2

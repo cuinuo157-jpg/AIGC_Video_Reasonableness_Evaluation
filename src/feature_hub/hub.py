@@ -30,10 +30,12 @@ class FeatureHub:
         video_path: str,
         device: str = "cuda",
         video_config: VideoProcessingConfig | None = None,
+        runtime_options: dict[str, Any] | None = None,
     ) -> None:
         self.video_path = video_path
         self.device = device
         self.video_config = video_config or VideoProcessingConfig()
+        self.runtime_options = runtime_options or {}
         self._cache = FeatureCache()
         self._extractors: dict[str, ExtractorFn] = {}
         self._lock = threading.RLock()
@@ -105,6 +107,7 @@ def create_default_hub(
     video_path: str,
     device: str = "cuda",
     video_config: VideoProcessingConfig | None = None,
+    runtime_options: dict[str, Any] | None = None,
 ) -> FeatureHub:
     """创建预注册所有默认特征提取器的 FeatureHub 实例。"""
     from .extractors.optical_flow import extract_optical_flow
@@ -118,7 +121,12 @@ def create_default_hub(
     from .extractors.iris_tracking import extract_iris_tracking
     from .extractors.au_features import extract_au_features
 
-    hub = FeatureHub(video_path, device, video_config=video_config)
+    hub = FeatureHub(
+        video_path,
+        device,
+        video_config=video_config,
+        runtime_options=runtime_options,
+    )
     hub.register_extractor("optical_flow", extract_optical_flow)
     hub.register_extractor("face_embedding", extract_face_embeddings)
     hub.register_extractor("depth", extract_depth_maps)

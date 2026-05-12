@@ -113,6 +113,8 @@ class EvaluationPipeline:
         video_config: VideoProcessingConfig | None = None,
         parallel: bool = False,
         max_workers: int | None = None,
+        au_backend: str | None = None,
+        au_external_python: str | None = None,
     ) -> None:
         self.device = device
         self.weights = weights or DEFAULT_WEIGHTS
@@ -121,6 +123,8 @@ class EvaluationPipeline:
         self.video_config = video_config or VideoProcessingConfig()
         self.parallel = parallel
         self.max_workers = max_workers
+        self.au_backend = au_backend
+        self.au_external_python = au_external_python
         mllm_for_analyzers = mllm_client if enable_mllm else None
         self._analyzers: dict[str, Any] = {
             "face_identity": FaceIdentityAnalyzer(),
@@ -147,6 +151,10 @@ class EvaluationPipeline:
             video_path,
             self.device,
             video_config=self.video_config,
+            runtime_options={
+                "au_backend": self.au_backend,
+                "au_external_python": self.au_external_python,
+            },
         )
 
     def _normalize_dimensions(
