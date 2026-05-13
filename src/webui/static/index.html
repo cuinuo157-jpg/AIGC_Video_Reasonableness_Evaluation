@@ -253,6 +253,43 @@
       </div>
     </section>
 
+    <section id="results-panel" class="results-panel hidden">
+      <div class="results-overview">
+        <div class="panel score-panel">
+          <div class="panel-head">
+            <h2>综合结果</h2>
+            <p id="result-video">-</p>
+          </div>
+          <div class="score-wrap">
+            <div id="final-score-ring" class="score-ring">
+              <div class="score-core">
+                <strong id="final-score-value">0.000</strong>
+                <span>综合分</span>
+              </div>
+            </div>
+            <div class="score-meta" id="score-meta"></div>
+          </div>
+          <div id="artifact-ribbon" class="artifact-ribbon"></div>
+        </div>
+
+        <div class="panel summary-panel">
+          <div class="panel-head">
+            <h2>运行摘要</h2>
+            <p>本次任务的时间、范围与最好/最弱维度。</p>
+          </div>
+          <div id="summary-grid" class="summary-grid"></div>
+        </div>
+      </div>
+
+      <div class="panel dimension-panel">
+        <div class="panel-head">
+          <h2>维度诊断</h2>
+          <p>显示各维度分数、关键指标和异常事件。</p>
+        </div>
+        <div id="dimension-cards" class="dimension-cards"></div>
+      </div>
+    </section>
+
     <section id="batch-results-panel" class="results-panel hidden">
       <div class="results-overview">
         <div class="panel score-panel">
