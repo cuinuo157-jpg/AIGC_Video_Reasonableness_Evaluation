@@ -493,8 +493,14 @@ class JobManager:
         final_report = build_batch_report(batch_results, job.run_config, total_elapsed,
                                             results_dir=os.fspath(self.results_dir))
 
+        # Set status BEFORE file I/O so frontend sees result even if writes fail
+        with self._lock:
+            job.result = final_report
+            job.status = "completed"
+            job.completed_at = time.time()
+            job.updated_at = job.completed_at
+
         result_path, log_path = self._build_output_paths(job)
-        job.result = final_report
         job.result_json_path = os.fspath(result_path)
         job.log_path = os.fspath(log_path)
 
@@ -508,11 +514,6 @@ class JobManager:
             f"[batch] 批量处理完成: {total} 个视频, "
             f"成功 {completed}, 失败 {failed}, 平均分 {avg:.3f}, 总耗时 {total_elapsed:.1f}s"
         )
-
-        with self._lock:
-            job.status = "completed"
-            job.completed_at = time.time()
-            job.updated_at = job.completed_at
 
     def _run_job(self, job_id: str) -> None:
         job = self.get_job(job_id)
