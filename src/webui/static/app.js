@@ -653,6 +653,7 @@ function renderBatchResults(data) {
     { l: "最弱分数", v: data.aggregate.worst_score != null ? data.aggregate.worst_score.toFixed(3) : "-" },
     { l: "平均分", v: avgScore.toFixed(3) },
     { l: "并发", v: data.video_processing.parallel ? `开启 × ${data.video_processing.max_workers || "auto"}` : "关闭" },
+    { l: "报告目录", v: "outputs/api_results/" },
   ].forEach(({ l, v }) => {
     const div = document.createElement("div");
     div.className = "summary-item";
@@ -674,11 +675,16 @@ function renderBatchResults(data) {
       ? (result.final_score >= 0.85 ? "score-high" : result.final_score >= 0.5 ? "score-mid" : "score-low")
       : "";
     const scoreText = result.status === "completed" ? (result.final_score || 0).toFixed(3) : "—";
+    const vlmKeys = result.vlm_outputs ? Object.keys(result.vlm_outputs) : [];
+    const vlmCell = vlmKeys.length > 0
+      ? `<span class="vlm-chip" title="${vlmKeys.join(', ')}">${vlmKeys.length}</span>`
+      : "<span class=\"vlm-none\">—</span>";
     tr.innerHTML = `
       <td class="num">${idx + 1}</td>
       <td class="name" title="${result.video_path || ""}">${result.video_name}</td>
       <td class="score-cell ${scoreClass}">${scoreText}</td>
       <td><span class="status-badge ${result.status}">${result.status === "completed" ? "完成" : "失败"}</span>${result.error ? `<span class="err-tip" title="${result.error.replace(/"/g, '&quot;')}">ⓘ</span>` : ""}</td>
+      <td>${vlmCell}</td>
       <td class="right">${formatBatchElapsed(result.elapsed_sec || 0)}</td>
       <td class="right dims">${Array.isArray(result.active_dimensions) ? result.active_dimensions.length : "-"}</td>
     `;

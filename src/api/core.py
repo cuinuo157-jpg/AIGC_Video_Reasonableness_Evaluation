@@ -420,6 +420,22 @@ class JobManager:
                         report, elapsed = run_analysis(single_config)
                     writer.flush()
                     result_data = build_dashboard_report(report, single_config, elapsed)
+
+                    # Extract VLM raw outputs per dimension
+                    vlm_outputs: dict[str, Any] = {}
+                    for card in result_data.get("dimensions", []):
+                        if card.get("vlm_raw_output") is not None:
+                            vlm_outputs[card["key"]] = card["vlm_raw_output"]
+
+                    # Save per-video report
+                    stem = Path(video_path).stem[:80] or "video"
+                    ts = time.strftime("%Y%m%d_%H%M%S", time.localtime(job.created_at))
+                    report_path = self.results_dir / f"{ts}_{stem}_{job.job_id}_per_video.json"
+                    report_path.write_text(
+                        json.dumps(result_data, ensure_ascii=False, indent=2),
+                        encoding="utf-8",
+                    )
+
                     batch_results.append({
                         "video_name": video_name,
                         "video_path": video_path,
@@ -427,6 +443,8 @@ class JobManager:
                         "status": "completed",
                         "elapsed_sec": round(elapsed, 3),
                         "active_dimensions": result_data.get("active_dimensions", []),
+                        "vlm_outputs": vlm_outputs,
+                        "report_path": os.fspath(report_path),
                         "error": None,
                     })
                     append_fn(
