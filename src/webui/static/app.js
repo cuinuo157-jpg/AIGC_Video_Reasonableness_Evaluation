@@ -583,60 +583,104 @@ function renderBatchProgress(current, total, currentVideo) {
   logMeta.textContent = `批量进度: ${current}/${total} (${pct}%)`;
 }
 
+function renderDistribution(data) {
+  const dist = { excellent: 0, good: 0, warning: 0, critical: 0 };
+  data.video_results.forEach((r) => {
+    if (r.status !== "completed" || r.final_score == null) return;
+    const s = r.final_score;
+    if (s >= 0.85) dist.excellent++;
+    else if (s >= 0.7) dist.good++;
+    else if (s >= 0.5) dist.warning++;
+    else dist.critical++;
+  });
+  const total = data.completed_videos || 1;
+  const bars = [
+    { key: "excellent", label: "优秀 ≥ 0.85", color: "var(--olive)" },
+    { key: "good", label: "良好 ≥ 0.70", color: "#2f6e41" },
+    { key: "warning", label: "警告 ≥ 0.50", color: "var(--warn)" },
+    { key: "critical", label: "严重 < 0.50", color: "var(--danger)" },
+  ];
+  let html = "";
+  bars.forEach((b) => {
+    const count = dist[b.key];
+    const pct = Math.round((count / total) * 100);
+    html += `
+      <div class="dist-row">
+        <span class="dist-label">${b.label}</span>
+        <div class="dist-bar-track">
+          <div class="dist-bar-fill" style="width:${pct}%;background:${b.color}"></div>
+        </div>
+        <span class="dist-count">${count}</span>
+      </div>`;
+  });
+  return html;
+}
+
 function renderBatchResults(data) {
   resultsPanel.classList.add("hidden");
   batchResultsPanel.classList.remove("hidden");
 
-  batchResultDir.textContent = `${data.video_dir || "-"} · ${data.scope === "anomaly" ? "五类异常" : "全量维度"}`;
+  const scopeLabel = data.scope === "anomaly" ? "五类异常" : "全量维度";
+  batchResultDir.innerHTML = `<code>${data.video_dir || "-"}</code><span class="batch-scope-tag">${scopeLabel}</span>`;
 
   const avgScore = typeof data.aggregate.avg_score === "number" ? data.aggregate.avg_score : 0;
   batchAvgScore.textContent = avgScore.toFixed(3);
+  document.querySelector(".batch-ring").style.setProperty("--ratio", `${Math.round(avgScore * 360)}deg`);
 
   batchScoreMeta.innerHTML = "";
   [
-    `总数 ${data.total_videos} 个视频`,
-    `成功 ${data.completed_videos} / 失败 ${data.failed_videos}`,
-    `总耗时 ${formatBatchElapsed(data.elapsed_sec)}`,
-    `设备 ${data.device}`,
-    `并发 ${data.video_processing.parallel ? "开启" : "关闭"}`,
-    `MLLM ${data.video_processing.enable_mllm ? data.video_processing.mllm_provider : "关闭"}`,
-  ].forEach((text) => {
+    { k: "总数", v: `${data.total_videos} 个` },
+    { k: "成功", v: data.completed_videos },
+    { k: "失败", v: data.failed_videos },
+    { k: "耗时", v: formatBatchElapsed(data.elapsed_sec) },
+    { k: "设备", v: data.device },
+    { k: "MLLM", v: data.video_processing.enable_mllm ? data.video_processing.mllm_provider : "关闭" },
+  ].forEach(({ k, v }) => {
     const chip = document.createElement("div");
     chip.className = "meta-chip";
-    chip.textContent = text;
+    chip.innerHTML = `<span>${k}</span><strong>${v}</strong>`;
     batchScoreMeta.appendChild(chip);
   });
 
+  const distEl = document.getElementById("batch-distribution");
+  distEl.innerHTML = renderDistribution(data);
+
   batchSummaryGrid.innerHTML = "";
   [
-    { label: "总视频", value: data.total_videos },
-    { label: "成功", value: data.completed_videos },
-    { label: "失败", value: data.failed_videos },
-    { label: "平均分", value: avgScore.toFixed(3) },
-    { label: "最优视频", value: data.aggregate.best_video || "-" },
-    { label: "最优分数", value: data.aggregate.best_score != null ? data.aggregate.best_score.toFixed(3) : "-" },
-    { label: "最弱视频", value: data.aggregate.worst_video || "-" },
-    { label: "最弱分数", value: data.aggregate.worst_score != null ? data.aggregate.worst_score.toFixed(3) : "-" },
-  ].forEach((item) => {
+    { l: "最优视频", v: data.aggregate.best_video || "-" },
+    { l: "最优分数", v: data.aggregate.best_score != null ? data.aggregate.best_score.toFixed(3) : "-" },
+    { l: "最弱视频", v: data.aggregate.worst_video || "-" },
+    { l: "最弱分数", v: data.aggregate.worst_score != null ? data.aggregate.worst_score.toFixed(3) : "-" },
+    { l: "平均分", v: avgScore.toFixed(3) },
+    { l: "并发", v: data.video_processing.parallel ? `开启 × ${data.video_processing.max_workers || "auto"}` : "关闭" },
+  ].forEach(({ l, v }) => {
     const div = document.createElement("div");
     div.className = "summary-item";
-    div.innerHTML = `<span>${item.label}</span><strong>${item.value}</strong>`;
+    div.innerHTML = `<span>${l}</span><strong>${v}</strong>`;
     batchSummaryGrid.appendChild(div);
   });
 
+  // Sort: completed by score desc, then failed
+  const sorted = [...data.video_results].sort((a, b) => {
+    if (a.status !== b.status) return a.status === "completed" ? -1 : 1;
+    return (b.final_score || 0) - (a.final_score || 0);
+  });
+
   batchTableBody.innerHTML = "";
-  data.video_results.forEach((result, idx) => {
+  sorted.forEach((result, idx) => {
     const tr = document.createElement("tr");
+    if (result.status === "failed") tr.classList.add("row-failed");
     const scoreClass = result.status === "completed"
       ? (result.final_score >= 0.85 ? "score-high" : result.final_score >= 0.5 ? "score-mid" : "score-low")
       : "";
+    const scoreText = result.status === "completed" ? (result.final_score || 0).toFixed(3) : "—";
     tr.innerHTML = `
-      <td>${idx + 1}</td>
-      <td title="${result.video_path || ""}">${result.video_name}</td>
-      <td class="score-cell ${scoreClass}">${result.status === "completed" ? (result.final_score || 0).toFixed(3) : "-"}</td>
-      <td><span class="status-badge ${result.status}">${result.status === "completed" ? "完成" : "失败"}</span></td>
-      <td>${formatBatchElapsed(result.elapsed_sec || 0)}</td>
-      <td>${Array.isArray(result.active_dimensions) ? result.active_dimensions.length : 0}</td>
+      <td class="num">${idx + 1}</td>
+      <td class="name" title="${result.video_path || ""}">${result.video_name}</td>
+      <td class="score-cell ${scoreClass}">${scoreText}</td>
+      <td><span class="status-badge ${result.status}">${result.status === "completed" ? "完成" : "失败"}</span>${result.error ? `<span class="err-tip" title="${result.error.replace(/"/g, '&quot;')}">ⓘ</span>` : ""}</td>
+      <td class="right">${formatBatchElapsed(result.elapsed_sec || 0)}</td>
+      <td class="right dims">${Array.isArray(result.active_dimensions) ? result.active_dimensions.length : "-"}</td>
     `;
     batchTableBody.appendChild(tr);
   });

@@ -291,36 +291,36 @@
     </section>
 
     <section id="batch-results-panel" class="results-panel hidden">
-      <div class="results-overview">
-        <div class="panel score-panel">
-          <div class="panel-head">
-            <h2>批量结果</h2>
-            <p id="batch-result-dir">-</p>
-          </div>
-          <div class="score-wrap">
-            <div class="score-ring">
-              <div class="score-core">
-                <strong id="batch-avg-score">0.000</strong>
-                <span>平均综合分</span>
-              </div>
-            </div>
-            <div class="score-meta" id="batch-score-meta"></div>
-          </div>
+      <div class="panel batch-hero">
+        <div class="panel-head">
+          <h2>批量结果</h2>
+          <p id="batch-result-dir">-</p>
         </div>
-
-        <div class="panel summary-panel">
-          <div class="panel-head">
-            <h2>批量摘要</h2>
-            <p>视频总数、成功/失败数与最好/最弱视频。</p>
+        <div class="batch-hero-body">
+          <div class="score-ring batch-ring">
+            <div class="score-core">
+              <strong id="batch-avg-score">0.000</strong>
+              <span>平均综合分</span>
+            </div>
           </div>
-          <div id="batch-summary-grid" class="summary-grid"></div>
+          <div class="batch-meta-col">
+            <div class="score-meta" id="batch-score-meta"></div>
+            <div class="batch-distribution" id="batch-distribution"></div>
+          </div>
         </div>
       </div>
 
       <div class="panel">
         <div class="panel-head">
+          <h2>批量摘要</h2>
+        </div>
+        <div id="batch-summary-grid" class="summary-grid"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
           <h2>视频列表</h2>
-          <p>每个视频的综合分与处理状态。</p>
+          <p>按综合分降序排列。</p>
         </div>
         <div class="batch-table-wrap">
           <table class="batch-table">
@@ -328,10 +328,10 @@
               <tr>
                 <th>#</th>
                 <th>视频</th>
-                <th>综合分</th>
+                <th class="right">综合分</th>
                 <th>状态</th>
-                <th>耗时</th>
-                <th>活跃维度</th>
+                <th class="right">耗时</th>
+                <th class="right">维度</th>
               </tr>
             </thead>
             <tbody id="batch-table-body"></tbody>
