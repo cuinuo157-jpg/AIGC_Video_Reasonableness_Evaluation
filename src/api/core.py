@@ -551,7 +551,16 @@ class JobManager:
                 if not video_list:
                     raise ValueError(f"目录中未找到匹配的视频文件: {job.run_config.video_dir}")
                 append(f"[batch] 扫描到 {len(video_list)} 个视频文件")
-                self._run_batch_job(job, video_list, append)
+                try:
+                    self._run_batch_job(job, video_list, append)
+                finally:
+                    # Safety net: ensure status is terminal if batch method didn't set it
+                    if job.status == "running":
+                        with self._lock:
+                            if job.status == "running":
+                                job.status = "completed" if job.result else "failed"
+                                job.completed_at = time.time()
+                                job.updated_at = job.completed_at
                 return
 
             writer = _JobLogWriter(append)
