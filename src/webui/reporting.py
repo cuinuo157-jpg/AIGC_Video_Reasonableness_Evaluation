@@ -363,3 +363,49 @@ def build_dashboard_report(
         "artifact_root": None,
         "artifacts": [],
     }
+
+
+def build_batch_report(
+    batch_results: list[dict[str, Any]],
+    run_config: Any,
+    total_elapsed: float,
+) -> dict[str, Any]:
+    """Build aggregated batch report from per-video results."""
+    completed = [r for r in batch_results if r["status"] == "completed"]
+    failed = [r for r in batch_results if r["status"] == "failed"]
+
+    scores = [r["final_score"] for r in completed if r["final_score"] is not None]
+    avg_score = round(sum(scores) / len(scores), 4) if scores else 0.0
+
+    best = max(completed, key=lambda r: r["final_score"] or 0) if completed else None
+    worst = min(completed, key=lambda r: r["final_score"] or 0) if completed else None
+
+    return {
+        "batch": True,
+        "video_dir": getattr(run_config, "video_dir", None),
+        "scope": getattr(run_config, "scope", "full"),
+        "device": getattr(run_config, "device", "cuda"),
+        "elapsed_sec": round(total_elapsed, 3),
+        "total_videos": len(batch_results),
+        "completed_videos": len(completed),
+        "failed_videos": len(failed),
+        "video_results": batch_results,
+        "aggregate": {
+            "avg_score": avg_score,
+            "best_video": best["video_name"] if best else None,
+            "best_score": best["final_score"] if best else None,
+            "worst_video": worst["video_name"] if worst else None,
+            "worst_score": worst["final_score"] if worst else None,
+            "total_elapsed": round(total_elapsed, 3),
+        },
+        "video_processing": {
+            "sample_stride": run_config.video_config.sample_stride,
+            "max_frames": run_config.video_config.max_frames,
+            "max_side": run_config.video_config.max_side,
+            "parallel": run_config.parallel,
+            "max_workers": run_config.max_workers,
+            "enable_mllm": run_config.enable_mllm,
+            "mllm_provider": run_config.mllm_provider,
+            "mllm_model": run_config.mllm_model,
+        },
+    }

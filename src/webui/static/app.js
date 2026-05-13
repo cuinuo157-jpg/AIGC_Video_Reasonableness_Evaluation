@@ -1,6 +1,7 @@
 const state = {
   config: null,
   scope: "anomaly",
+  processingMode: "single",
   activeJobId: null,
   logOffset: 0,
   pollTimer: null,
@@ -30,6 +31,15 @@ const artifactRootPath = document.getElementById("artifact-root-path");
 const logConsole = document.getElementById("log-console");
 const logMeta = document.getElementById("log-meta");
 const artifactRibbon = document.getElementById("artifact-ribbon");
+const modeOptions = document.getElementById("mode-options");
+const singleFields = document.getElementById("single-fields");
+const batchFields = document.getElementById("batch-fields");
+const batchResultsPanel = document.getElementById("batch-results-panel");
+const batchResultDir = document.getElementById("batch-result-dir");
+const batchAvgScore = document.getElementById("batch-avg-score");
+const batchScoreMeta = document.getElementById("batch-score-meta");
+const batchSummaryGrid = document.getElementById("batch-summary-grid");
+const batchTableBody = document.getElementById("batch-table-body");
 
 function setStatus(mode, title, text) {
   statusCard.className = `status-card ${mode}`;
@@ -143,8 +153,38 @@ function renderDimensionOptions() {
   });
 }
 
+function toggleProcessingMode() {
+  const batchMode = state.processingMode === "batch";
+  singleFields.classList.toggle("hidden", batchMode);
+  batchFields.classList.toggle("hidden", !batchMode);
+  if (batchMode) {
+    form.elements.video_path.value = "";
+    form.elements.video_file.value = "";
+  } else {
+    form.elements.video_dir.value = "";
+    form.elements.file_extensions.value = ".mp4,.avi,.mov,.mkv,.webm";
+    form.elements.recursive_scan.checked = false;
+  }
+}
+
+function bindModeOptions() {
+  document.querySelectorAll('input[name="processing_mode"]').forEach((radio) => {
+    radio.addEventListener("change", () => {
+      state.processingMode = radio.value;
+      toggleProcessingMode();
+    });
+  });
+  toggleProcessingMode();
+}
+
 function fillDemo() {
-  form.elements.video_path.value = "data/sample.mp4";
+  if (state.processingMode === "batch") {
+    form.elements.video_dir.value = "data/videos";
+    form.elements.file_extensions.value = ".mp4,.avi,.mov,.mkv,.webm";
+    form.elements.recursive_scan.checked = false;
+  } else {
+    form.elements.video_path.value = "data/sample.mp4";
+  }
   form.elements.device.value = state.config.defaults.device;
   form.elements.au_backend.value = state.config.defaults.au_backend;
   form.elements.au_external_python.value = state.config.defaults.au_external_python;
@@ -190,6 +230,18 @@ function collectFormData() {
   payload.append("parallel", String(form.elements.parallel.checked));
   payload.append("save_visualizations", String(form.elements.save_visualizations.checked));
   payload.append("enable_mllm", String(form.elements.enable_mllm.checked));
+
+  if (state.processingMode === "batch") {
+    const videoDir = form.elements.video_dir.value.trim();
+    if (videoDir) {
+      payload.append("video_dir", videoDir);
+    }
+    const fileExt = form.elements.file_extensions.value.trim();
+    if (fileExt) {
+      payload.append("file_extensions", fileExt);
+    }
+    payload.append("recursive_scan", String(form.elements.recursive_scan.checked));
+  }
 
   const fileInput = form.elements.video_file;
   if (fileInput.files.length > 0) {
@@ -368,6 +420,7 @@ async function fetchConfig() {
   state.config = await response.json();
   renderScopeOptions();
   renderDimensionOptions();
+  bindModeOptions();
   fillDemo();
 }
 
@@ -409,12 +462,26 @@ async function pollJobStatus() {
     artifactRootPath.title = data.artifact_root;
   }
 
+  // Show batch progress during running
+  if (data.status === "running" && data.result && data.result.batch_progress) {
+    renderBatchProgress(
+      data.result.batch_progress.current,
+      data.result.batch_progress.total,
+      data.result.batch_progress.current_video,
+    );
+  }
+
   if (data.status === "completed" && data.result) {
     stopPolling();
     await pollJobLogs();
     state.activeJobId = null;
-    renderResults(data.result);
-    setStatus("success", "分析完成", `已完成 ${data.result.video_name} 的评测，综合分 ${data.result.final_score.toFixed(3)}。`);
+    if (data.result.batch) {
+      renderBatchResults(data.result);
+      setStatus("success", "批量分析完成", `已完成 ${data.result.total_videos} 个视频的评测，平均分 ${(data.result.aggregate.avg_score || 0).toFixed(3)}。`);
+    } else {
+      renderResults(data.result);
+      setStatus("success", "分析完成", `已完成 ${data.result.video_name} 的评测，综合分 ${data.result.final_score.toFixed(3)}。`);
+    }
     setSubmitting(false);
   } else if (data.status === "failed") {
     stopPolling();
@@ -439,6 +506,83 @@ function startPolling(jobId) {
   scheduleNextPoll(0);
 }
 
+function renderBatchProgress(current, total, currentVideo) {
+  const pct = Math.round((current / total) * 100);
+  setStatus(
+    "running",
+    "批量处理中",
+    `正在处理 ${current}/${total}: ${currentVideo}`,
+  );
+  logMeta.textContent = `批量进度: ${current}/${total} (${pct}%)`;
+}
+
+function renderBatchResults(data) {
+  resultsPanel.classList.add("hidden");
+  batchResultsPanel.classList.remove("hidden");
+
+  batchResultDir.textContent = `${data.video_dir || "-"} · ${data.scope === "anomaly" ? "五类异常" : "全量维度"}`;
+
+  const avgScore = typeof data.aggregate.avg_score === "number" ? data.aggregate.avg_score : 0;
+  batchAvgScore.textContent = avgScore.toFixed(3);
+
+  batchScoreMeta.innerHTML = "";
+  [
+    `总数 ${data.total_videos} 个视频`,
+    `成功 ${data.completed_videos} / 失败 ${data.failed_videos}`,
+    `总耗时 ${formatBatchElapsed(data.elapsed_sec)}`,
+    `设备 ${data.device}`,
+    `并发 ${data.video_processing.parallel ? "开启" : "关闭"}`,
+    `MLLM ${data.video_processing.enable_mllm ? data.video_processing.mllm_provider : "关闭"}`,
+  ].forEach((text) => {
+    const chip = document.createElement("div");
+    chip.className = "meta-chip";
+    chip.textContent = text;
+    batchScoreMeta.appendChild(chip);
+  });
+
+  batchSummaryGrid.innerHTML = "";
+  [
+    { label: "总视频", value: data.total_videos },
+    { label: "成功", value: data.completed_videos },
+    { label: "失败", value: data.failed_videos },
+    { label: "平均分", value: avgScore.toFixed(3) },
+    { label: "最优视频", value: data.aggregate.best_video || "-" },
+    { label: "最优分数", value: data.aggregate.best_score != null ? data.aggregate.best_score.toFixed(3) : "-" },
+    { label: "最弱视频", value: data.aggregate.worst_video || "-" },
+    { label: "最弱分数", value: data.aggregate.worst_score != null ? data.aggregate.worst_score.toFixed(3) : "-" },
+  ].forEach((item) => {
+    const div = document.createElement("div");
+    div.className = "summary-item";
+    div.innerHTML = `<span>${item.label}</span><strong>${item.value}</strong>`;
+    batchSummaryGrid.appendChild(div);
+  });
+
+  batchTableBody.innerHTML = "";
+  data.video_results.forEach((result, idx) => {
+    const tr = document.createElement("tr");
+    const scoreClass = result.status === "completed"
+      ? (result.final_score >= 0.85 ? "score-high" : result.final_score >= 0.5 ? "score-mid" : "score-low")
+      : "";
+    tr.innerHTML = `
+      <td>${idx + 1}</td>
+      <td title="${result.video_path || ""}">${result.video_name}</td>
+      <td class="score-cell ${scoreClass}">${result.status === "completed" ? (result.final_score || 0).toFixed(3) : "-"}</td>
+      <td><span class="status-badge ${result.status}">${result.status === "completed" ? "完成" : "失败"}</span></td>
+      <td>${formatBatchElapsed(result.elapsed_sec || 0)}</td>
+      <td>${Array.isArray(result.active_dimensions) ? result.active_dimensions.length : 0}</td>
+    `;
+    batchTableBody.appendChild(tr);
+  });
+}
+
+function formatBatchElapsed(sec) {
+  if (!sec || sec <= 0) return "-";
+  if (sec < 60) return `${sec.toFixed(1)}s`;
+  const mins = Math.floor(sec / 60);
+  const secs = Math.round(sec % 60);
+  return `${mins}m ${secs}s`;
+}
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   stopPolling();
@@ -446,6 +590,7 @@ form.addEventListener("submit", async (event) => {
   setSubmitting(true);
   setStatus("running", "分析中", "后端正在抽帧、执行检测并实时写出日志。");
   resultsPanel.classList.add("hidden");
+  batchResultsPanel.classList.add("hidden");
   resetArtifacts();
   clearLogConsole();
   try {

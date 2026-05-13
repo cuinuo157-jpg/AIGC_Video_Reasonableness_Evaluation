@@ -741,6 +741,101 @@ input[type="file"] {
   display: none !important;
 }
 
+/* ── Batch Processing ── */
+.batch-table-wrap {
+  margin-top: 18px;
+  overflow-x: auto;
+}
+
+.batch-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.batch-table th {
+  padding: 12px 14px;
+  text-align: left;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 2px solid var(--line);
+}
+
+.batch-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  line-height: 1.5;
+}
+
+.batch-table tbody tr:hover {
+  background: rgba(255, 253, 248, 0.6);
+}
+
+.batch-table .score-cell {
+  text-align: right;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.batch-table .score-high {
+  color: var(--olive);
+}
+
+.batch-table .score-mid {
+  color: var(--warn);
+}
+
+.batch-table .score-low {
+  color: var(--danger);
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.status-badge.completed {
+  background: var(--olive-soft);
+  color: var(--olive);
+}
+
+.status-badge.failed {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.batch-progress {
+  margin-top: 14px;
+}
+
+.batch-progress-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(24, 32, 40, 0.08);
+  overflow: hidden;
+}
+
+.batch-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #d95f43, #556b2f);
+  transition: width 0.3s ease;
+}
+
+.batch-progress-text {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 @media (max-width: 960px) {
   .layout,
   .results-overview {

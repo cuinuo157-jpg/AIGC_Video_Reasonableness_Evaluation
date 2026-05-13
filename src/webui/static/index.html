@@ -31,6 +31,27 @@
           <p>支持本地路径或文件上传，两者二选一即可。</p>
         </div>
         <form id="analysis-form">
+          <div class="field">
+            <span>处理模式</span>
+            <div id="mode-options" class="scope-grid">
+              <label class="scope-option">
+                <input type="radio" name="processing_mode" value="single" checked>
+                <div>
+                  <strong>单视频</strong>
+                  <small>上传单个视频或填写本地路径进行分析。</small>
+                </div>
+              </label>
+              <label class="scope-option">
+                <input type="radio" name="processing_mode" value="batch">
+                <div>
+                  <strong>批量处理</strong>
+                  <small>提供视频目录，自动扫描并逐一分析所有视频。</small>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div id="single-fields">
           <label class="field">
             <span>本地视频路径</span>
             <input type="text" name="video_path" placeholder="例如 data/sample.mp4">
@@ -40,6 +61,24 @@
             <span>上传视频文件</span>
             <input type="file" name="video_file" accept="video/*">
           </label>
+          </div>
+
+          <div id="batch-fields" class="hidden">
+          <label class="field">
+            <span>视频目录</span>
+            <input type="text" name="video_dir" placeholder="例如 data/videos">
+          </label>
+          <div class="field field-inline">
+            <label>
+              <span>文件扩展名</span>
+              <input type="text" name="file_extensions" value=".mp4,.avi,.mov,.mkv,.webm">
+            </label>
+            <label class="toggle">
+              <input type="checkbox" name="recursive_scan">
+              <span>递归扫描子目录</span>
+            </label>
+          </div>
+          </div>
 
           <div class="field">
             <span>分析范围</span>
@@ -205,47 +244,58 @@
             <span id="log-meta" class="log-meta">等待任务启动</span>
           </div>
           <pre id="log-console" class="log-console"></pre>
-        </div>
-      </section>
-    </main>
+      </div>
+    </section>
 
-    <section id="results-panel" class="results-panel hidden">
+    <section id="batch-results-panel" class="results-panel hidden">
       <div class="results-overview">
         <div class="panel score-panel">
           <div class="panel-head">
-            <h2>综合结果</h2>
-            <p id="result-video">-</p>
+            <h2>批量结果</h2>
+            <p id="batch-result-dir">-</p>
           </div>
           <div class="score-wrap">
-            <div id="final-score-ring" class="score-ring">
+            <div class="score-ring">
               <div class="score-core">
-                <strong id="final-score-value">0.000</strong>
-                <span>综合分</span>
+                <strong id="batch-avg-score">0.000</strong>
+                <span>平均综合分</span>
               </div>
             </div>
-            <div class="score-meta" id="score-meta"></div>
+            <div class="score-meta" id="batch-score-meta"></div>
           </div>
-          <div id="artifact-ribbon" class="artifact-ribbon"></div>
         </div>
 
         <div class="panel summary-panel">
           <div class="panel-head">
-            <h2>运行摘要</h2>
-            <p>本次任务的时间、范围与最好/最弱维度。</p>
+            <h2>批量摘要</h2>
+            <p>视频总数、成功/失败数与最好/最弱视频。</p>
           </div>
-          <div id="summary-grid" class="summary-grid"></div>
+          <div id="batch-summary-grid" class="summary-grid"></div>
         </div>
       </div>
 
-      <div class="panel dimension-panel">
+      <div class="panel">
         <div class="panel-head">
-          <h2>维度诊断</h2>
-          <p>显示各维度分数、关键指标和异常事件。</p>
+          <h2>视频列表</h2>
+          <p>每个视频的综合分与处理状态。</p>
         </div>
-        <div id="dimension-cards" class="dimension-cards"></div>
+        <div class="batch-table-wrap">
+          <table class="batch-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>视频</th>
+                <th>综合分</th>
+                <th>状态</th>
+                <th>耗时</th>
+                <th>活跃维度</th>
+              </tr>
+            </thead>
+            <tbody id="batch-table-body"></tbody>
+          </table>
+        </div>
       </div>
     </section>
-  </div>
 
   <template id="dimension-card-template">
     <article class="dimension-card">

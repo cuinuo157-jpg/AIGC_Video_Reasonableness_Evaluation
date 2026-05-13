@@ -75,10 +75,30 @@ DEFAULT_RESULTS_DIR = Path("outputs") / "webui_results"
 DEFAULT_VISUALIZATION_DIR = Path("outputs") / "webui_artifacts"
 MAX_LOG_LINES = 800
 SUPPORTED_MLLM_PROVIDERS = ("vllm", "dashscope", "openai", "anthropic", "huawei_custom")
+BATCH_VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv", ".webm", ".MP4", ".AVI", ".MOV", ".MKV", ".WEBM")
 
 
 def _default_mllm_config() -> MLLMConfig:
     return MLLMConfig.from_env()
+
+
+def scan_video_directory(
+    dir_path: str,
+    extensions: tuple[str, ...] | None = None,
+    recursive: bool = False,
+) -> list[str]:
+    """Scan a directory for video files. Returns sorted list of absolute paths."""
+    exts = extensions or BATCH_VIDEO_EXTENSIONS
+    target = Path(dir_path).resolve()
+    if not target.is_dir():
+        raise ValueError(f"不是有效目录: {dir_path}")
+    pattern = "**/*" if recursive else "*"
+    videos: list[str] = []
+    for ext in exts:
+        for p in target.glob(pattern):
+            if p.is_file() and p.suffix == ext:
+                videos.append(str(p))
+    return sorted(set(videos))
 
 
 @dataclass(frozen=True)
@@ -106,6 +126,9 @@ class WebUIRunConfig:
             max_side=DEFAULT_MAX_SIDE,
         )
     )
+    video_dir: str | None = None
+    file_extensions: str = ".mp4,.avi,.mov,.mkv,.webm"
+    recursive_scan: bool = False
 
 
 @dataclass
@@ -267,6 +290,112 @@ class WebUIJobManager:
         log_path.write_text("\n".join(job.logs), encoding="utf-8")
         return os.fspath(result_path), os.fspath(log_path)
 
+    def _run_batch_job(self, job: WebUIJob, video_list: list[str], append_fn: Any) -> None:
+        """Run batch analysis sequentially for all videos in the list."""
+        total = len(video_list)
+        batch_results: list[dict[str, Any]] = []
+        batch_start = time.perf_counter()
+
+        for idx, video_path in enumerate(video_list, 1):
+            video_name = Path(video_path).name
+            append_fn(f"[batch] 处理 {idx}/{total}: {video_name}")
+
+            single_config = WebUIRunConfig(
+                video_path=video_path,
+                scope=job.run_config.scope,
+                selected_dimensions=job.run_config.selected_dimensions,
+                device=job.run_config.device,
+                au_backend=job.run_config.au_backend,
+                au_external_python=job.run_config.au_external_python,
+                enable_mllm=job.run_config.enable_mllm,
+                mllm_provider=job.run_config.mllm_provider,
+                mllm_model=job.run_config.mllm_model,
+                mllm_base_url=job.run_config.mllm_base_url,
+                mllm_api_key=job.run_config.mllm_api_key,
+                mllm_service_name=job.run_config.mllm_service_name,
+                save_visualizations=False,
+                parallel=job.run_config.parallel,
+                max_workers=job.run_config.max_workers,
+                video_config=job.run_config.video_config,
+            )
+
+            try:
+                report, elapsed = run_analysis(single_config)
+                from .reporting import build_dashboard_report
+
+                result_data = build_dashboard_report(report, single_config, elapsed)
+                batch_results.append({
+                    "video_name": video_name,
+                    "video_path": video_path,
+                    "final_score": result_data.get("final_score"),
+                    "status": "completed",
+                    "elapsed_sec": round(elapsed, 3),
+                    "active_dimensions": result_data.get("active_dimensions", []),
+                    "error": None,
+                })
+                append_fn(
+                    f"[batch] ✓ {idx}/{total}: {video_name} - "
+                    f"综合分 {result_data.get('final_score', 0):.3f} ({elapsed:.1f}s)"
+                )
+            except Exception as exc:
+                batch_results.append({
+                    "video_name": video_name,
+                    "video_path": video_path,
+                    "final_score": None,
+                    "status": "failed",
+                    "elapsed_sec": 0,
+                    "active_dimensions": [],
+                    "error": str(exc),
+                })
+                append_fn(f"[batch] ✗ {idx}/{total}: {video_name} - 失败: {exc}")
+
+            # Update progress in job for frontend polling
+            with self._lock:
+                job.result = {
+                    "batch": True,
+                    "batch_progress": {
+                        "current": idx,
+                        "total": total,
+                        "current_video": video_name,
+                    },
+                    "video_dir": job.run_config.video_dir,
+                    "total_videos": total,
+                    "completed_videos": len([r for r in batch_results if r["status"] == "completed"]),
+                    "failed_videos": len([r for r in batch_results if r["status"] == "failed"]),
+                    "video_results": list(batch_results),
+                }
+
+        total_elapsed = time.perf_counter() - batch_start
+
+        from .reporting import build_batch_report
+
+        final_report = build_batch_report(batch_results, job.run_config, total_elapsed)
+
+        result_path, log_path = self._build_output_paths(job)
+        job.result = final_report
+        job.result_json_path = os.fspath(result_path)
+        job.log_path = os.fspath(log_path)
+
+        result_path.write_text(
+            json.dumps(final_report, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        log_path.write_text("\n".join(job.logs), encoding="utf-8")
+
+        completed = final_report["completed_videos"]
+        failed = final_report["failed_videos"]
+        avg = final_report["aggregate"]["avg_score"]
+        append_fn(
+            f"[batch] 批量处理完成: {total} 个视频, "
+            f"成功 {completed}, 失败 {failed}, "
+            f"平均分 {avg:.3f}, 总耗时 {total_elapsed:.1f}s"
+        )
+
+        with self._lock:
+            job.status = "completed"
+            job.completed_at = time.time()
+            job.updated_at = job.completed_at
+
     def _run_job(self, job_id: str) -> None:
         job = self.get_job(job_id)
         with self._lock:
@@ -276,7 +405,7 @@ class WebUIJobManager:
         def append(message: str) -> None:
             self._append_log(job_id, message)
 
-        append(f"[job] 开始分析 {job.run_config.video_path}")
+        append(f"[job] 开始分析 {job.run_config.video_path or job.run_config.video_dir}")
         append(
             f"[job] 范围={job.run_config.scope}, 维度={','.join(job.run_config.selected_dimensions)}, "
             f"device={job.run_config.device}, parallel={job.run_config.parallel}"
@@ -296,6 +425,21 @@ class WebUIJobManager:
                 f"base_url={job.run_config.mllm_base_url or '-'}, "
                 f"service_name={job.run_config.mllm_service_name or '-'}"
             )
+
+        if job.run_config.video_dir:
+            extensions = tuple(
+                e.strip() for e in job.run_config.file_extensions.split(",") if e.strip()
+            ) or BATCH_VIDEO_EXTENSIONS
+            video_list = scan_video_directory(
+                job.run_config.video_dir,
+                extensions=extensions,
+                recursive=job.run_config.recursive_scan,
+            )
+            if not video_list:
+                raise ValueError(f"目录中未找到匹配的视频文件: {job.run_config.video_dir}")
+            append(f"[batch] 扫描到 {len(video_list)} 个视频文件")
+            self._run_batch_job(job, video_list, append)
+            return
 
         writer = _JobLogWriter(append)
         tee_stdout = _TeeWriter(sys.stdout, writer)
@@ -470,10 +614,13 @@ def _normalize_dimensions(raw: list[str], scope: str) -> tuple[str, ...]:
 def build_run_config(payload: dict[str, Any], uploaded_video_path: str | None = None) -> WebUIRunConfig:
     mllm_defaults = _default_mllm_config()
     video_path = uploaded_video_path or str(payload.get("video_path", "")).strip()
-    if not video_path:
-        raise ValueError("请提供视频文件或本地视频路径")
-    if not Path(video_path).exists():
+    video_dir = str(payload.get("video_dir", "")).strip() or None
+    if not video_path and not video_dir:
+        raise ValueError("请提供视频文件、本地视频路径或视频目录")
+    if video_path and not Path(video_path).exists():
         raise ValueError(f"视频不存在: {video_path}")
+    if video_dir and not Path(video_dir).is_dir():
+        raise ValueError(f"视频目录不存在: {video_dir}")
 
     scope = "full" if str(payload.get("scope", "")).strip().lower() == "full" else "anomaly"
     selection_key = "selected_dimensions" if scope == "full" else "anomaly_types"
@@ -519,6 +666,8 @@ def build_run_config(payload: dict[str, Any], uploaded_video_path: str | None = 
         max_side=_coerce_int(payload.get("max_side"), DEFAULT_MAX_SIDE, minimum=64, allow_none=True),
     )
     max_workers = _coerce_int(payload.get("max_workers"), None, minimum=1, allow_none=True)
+    file_extensions = str(payload.get("file_extensions", ".mp4,.avi,.mov,.mkv,.webm")).strip() or ".mp4,.avi,.mov,.mkv,.webm"
+    recursive_scan = _coerce_bool(payload.get("recursive_scan"), False)
 
     return WebUIRunConfig(
         video_path=video_path,
@@ -538,6 +687,9 @@ def build_run_config(payload: dict[str, Any], uploaded_video_path: str | None = 
         parallel=_coerce_bool(payload.get("parallel"), True),
         max_workers=max_workers,
         video_config=video_config,
+        video_dir=video_dir,
+        file_extensions=file_extensions,
+        recursive_scan=recursive_scan,
     )
 
 
