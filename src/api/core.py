@@ -6,6 +6,7 @@ Contains job management, analysis execution, video scanning, and reporting.
 
 from __future__ import annotations
 
+import gc
 import json
 import logging
 import os
@@ -416,6 +417,7 @@ class JobManager:
                 )
 
                 try:
+                    append_fn(f"[batch] {idx}/{total}: 开始抽帧与分析 {video_name}")
                     with redirect_stdout(tee_stdout), redirect_stderr(tee_stderr):
                         report, elapsed = run_analysis(single_config)
                     writer.flush()
@@ -463,6 +465,16 @@ class JobManager:
                         "error": str(exc),
                     })
                     append_fn(f"[batch] ✗ {idx}/{total}: {video_name} - 失败: {exc}")
+
+                # Free GPU memory between videos
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                        torch.cuda.synchronize()
+                except Exception:
+                    pass
+                gc.collect()
 
                 with self._lock:
                     job.result = {
