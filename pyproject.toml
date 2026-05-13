@@ -43,6 +43,12 @@ dev = [
 dashscope = [
     "dashscope>=1.19.0",
 ]
+# FastAPI evaluation service
+api = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.0.0",
+]
 # 需要手动安装的第三方模型（不在 PyPI 上）
 # cotracker     → third_party/ 或 pip install git+...
 # groundingdino → third_party/ 或 pip install git+...
