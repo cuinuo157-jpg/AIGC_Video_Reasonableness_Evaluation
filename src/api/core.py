@@ -384,67 +384,80 @@ class JobManager:
         batch_results: list[dict[str, Any]] = []
         batch_start = time.perf_counter()
 
-        for idx, video_path in enumerate(video_list, 1):
-            video_name = Path(video_path).name
-            append_fn(f"[batch] 处理 {idx}/{total}: {video_name}")
+        writer = _JobLogWriter(append_fn)
+        tee_stdout = _TeeWriter(sys.stdout, writer)
+        tee_stderr = _TeeWriter(sys.stderr, writer)
+        root_logger = logging.getLogger()
+        log_handler = _JobLogHandler(append_fn)
+        root_logger.addHandler(log_handler)
 
-            single_config = AnalysisConfig(
-                video_path=video_path,
-                scope=job.run_config.scope,
-                selected_dimensions=job.run_config.selected_dimensions,
-                device=job.run_config.device,
-                au_backend=job.run_config.au_backend,
-                au_external_python=job.run_config.au_external_python,
-                enable_mllm=job.run_config.enable_mllm,
-                mllm_provider=job.run_config.mllm_provider,
-                mllm_model=job.run_config.mllm_model,
-                mllm_base_url=job.run_config.mllm_base_url,
-                mllm_api_key=job.run_config.mllm_api_key,
-                mllm_service_name=job.run_config.mllm_service_name,
-                save_visualizations=False,
-                parallel=job.run_config.parallel,
-                max_workers=job.run_config.max_workers,
-                video_config=job.run_config.video_config,
-            )
+        try:
+            for idx, video_path in enumerate(video_list, 1):
+                video_name = Path(video_path).name
+                append_fn(f"[batch] 处理 {idx}/{total}: {video_name}")
 
-            try:
-                report, elapsed = run_analysis(single_config)
-                result_data = build_dashboard_report(report, single_config, elapsed)
-                batch_results.append({
-                    "video_name": video_name,
-                    "video_path": video_path,
-                    "final_score": result_data.get("final_score"),
-                    "status": "completed",
-                    "elapsed_sec": round(elapsed, 3),
-                    "active_dimensions": result_data.get("active_dimensions", []),
-                    "error": None,
-                })
-                append_fn(
-                    f"[batch] ✓ {idx}/{total}: {video_name} - "
-                    f"综合分 {result_data.get('final_score', 0):.3f} ({elapsed:.1f}s)"
+                single_config = AnalysisConfig(
+                    video_path=video_path,
+                    scope=job.run_config.scope,
+                    selected_dimensions=job.run_config.selected_dimensions,
+                    device=job.run_config.device,
+                    au_backend=job.run_config.au_backend,
+                    au_external_python=job.run_config.au_external_python,
+                    enable_mllm=job.run_config.enable_mllm,
+                    mllm_provider=job.run_config.mllm_provider,
+                    mllm_model=job.run_config.mllm_model,
+                    mllm_base_url=job.run_config.mllm_base_url,
+                    mllm_api_key=job.run_config.mllm_api_key,
+                    mllm_service_name=job.run_config.mllm_service_name,
+                    save_visualizations=False,
+                    parallel=job.run_config.parallel,
+                    max_workers=job.run_config.max_workers,
+                    video_config=job.run_config.video_config,
                 )
-            except Exception as exc:
-                batch_results.append({
-                    "video_name": video_name,
-                    "video_path": video_path,
-                    "final_score": None,
-                    "status": "failed",
-                    "elapsed_sec": 0,
-                    "active_dimensions": [],
-                    "error": str(exc),
-                })
-                append_fn(f"[batch] ✗ {idx}/{total}: {video_name} - 失败: {exc}")
 
-            with self._lock:
-                job.result = {
-                    "batch": True,
-                    "batch_progress": {"current": idx, "total": total, "current_video": video_name},
-                    "video_dir": job.run_config.video_dir,
-                    "total_videos": total,
-                    "completed_videos": len([r for r in batch_results if r["status"] == "completed"]),
-                    "failed_videos": len([r for r in batch_results if r["status"] == "failed"]),
-                    "video_results": list(batch_results),
-                }
+                try:
+                    with redirect_stdout(tee_stdout), redirect_stderr(tee_stderr):
+                        report, elapsed = run_analysis(single_config)
+                    writer.flush()
+                    result_data = build_dashboard_report(report, single_config, elapsed)
+                    batch_results.append({
+                        "video_name": video_name,
+                        "video_path": video_path,
+                        "final_score": result_data.get("final_score"),
+                        "status": "completed",
+                        "elapsed_sec": round(elapsed, 3),
+                        "active_dimensions": result_data.get("active_dimensions", []),
+                        "error": None,
+                    })
+                    append_fn(
+                        f"[batch] ✓ {idx}/{total}: {video_name} - "
+                        f"综合分 {result_data.get('final_score', 0):.3f} ({elapsed:.1f}s)"
+                    )
+                except Exception as exc:
+                    writer.flush()
+                    batch_results.append({
+                        "video_name": video_name,
+                        "video_path": video_path,
+                        "final_score": None,
+                        "status": "failed",
+                        "elapsed_sec": 0,
+                        "active_dimensions": [],
+                        "error": str(exc),
+                    })
+                    append_fn(f"[batch] ✗ {idx}/{total}: {video_name} - 失败: {exc}")
+
+                with self._lock:
+                    job.result = {
+                        "batch": True,
+                        "batch_progress": {"current": idx, "total": total, "current_video": video_name},
+                        "video_dir": job.run_config.video_dir,
+                        "total_videos": total,
+                        "completed_videos": len([r for r in batch_results if r["status"] == "completed"]),
+                        "failed_videos": len([r for r in batch_results if r["status"] == "failed"]),
+                        "video_results": list(batch_results),
+                    }
+        finally:
+            root_logger.removeHandler(log_handler)
 
         total_elapsed = time.perf_counter() - batch_start
         final_report = build_batch_report(batch_results, job.run_config, total_elapsed)
