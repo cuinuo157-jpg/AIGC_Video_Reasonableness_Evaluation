@@ -478,7 +478,8 @@ class JobManager:
             root_logger.removeHandler(log_handler)
 
         total_elapsed = time.perf_counter() - batch_start
-        final_report = build_batch_report(batch_results, job.run_config, total_elapsed)
+        final_report = build_batch_report(batch_results, job.run_config, total_elapsed,
+                                            results_dir=os.fspath(self.results_dir))
 
         result_path, log_path = self._build_output_paths(job)
         job.result = final_report
@@ -1079,6 +1080,7 @@ def build_dashboard_report(
 
 def build_batch_report(
     batch_results: list[dict[str, Any]], run_config: AnalysisConfig, total_elapsed: float,
+    results_dir: str = "",
 ) -> dict[str, Any]:
     """Build aggregated batch report from per-video results."""
     completed = [r for r in batch_results if r["status"] == "completed"]
@@ -1090,6 +1092,7 @@ def build_batch_report(
     return {
         "batch": True,
         "video_dir": getattr(run_config, "video_dir", None),
+        "results_dir": results_dir,
         "scope": getattr(run_config, "scope", "full"),
         "device": getattr(run_config, "device", "cuda"),
         "elapsed_sec": round(total_elapsed, 3),

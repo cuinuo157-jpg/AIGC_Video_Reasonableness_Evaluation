@@ -653,7 +653,7 @@ function renderBatchResults(data) {
     { l: "最弱分数", v: data.aggregate.worst_score != null ? data.aggregate.worst_score.toFixed(3) : "-" },
     { l: "平均分", v: avgScore.toFixed(3) },
     { l: "并发", v: data.video_processing.parallel ? `开启 × ${data.video_processing.max_workers || "auto"}` : "关闭" },
-    { l: "报告目录", v: "outputs/api_results/" },
+    { l: "报告目录", v: data.results_dir || "outputs/" },
   ].forEach(({ l, v }) => {
     const div = document.createElement("div");
     div.className = "summary-item";
