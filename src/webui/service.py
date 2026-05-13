@@ -107,15 +107,24 @@ def build_frontend_config() -> dict[str, Any]:
             "save_visualizations": False,
             "visualization_root": os.fspath(DEFAULT_VISUALIZATION_DIR),
             "enable_mllm": False,
-            "mllm_provider": mllm_defaults.api_provider,
-            "mllm_model": mllm_defaults.api_model,
-            "mllm_base_url": mllm_defaults.api_base_url or "",
+            "mllm_provider": "huawei_custom",
+            "mllm_model": "Qwen3-VL-235B-A22B-Instruct",
+            "mllm_base_url": "http://aitest-beta.rnd.huawei.com/v1",
             "mllm_api_key": "",
-            "mllm_service_name": mllm_defaults.api_service_name,
+            "mllm_service_name": "simple_client",
             "anomaly_types": list(DEFAULT_ANOMALY_TYPES),
             "selected_dimensions": list(FULL_DIMENSIONS),
         },
         "mllm_providers": list(SUPPORTED_MLLM_PROVIDERS),
+        "huawei_models": [
+            "Qwen2.5-72B",
+            "Qwen2.5-VL-32B-Instruct",
+            "Qwen2.5-VL-72B-Instruct",
+            "DeepSeek-V3",
+            "Qwen3-235B-A22B-Instruct-2507",
+            "Qwen3-VL-32B-Instruct",
+            "Qwen3-VL-235B-A22B-Instruct",
+        ],
     }
 
 

@@ -155,28 +155,34 @@
           <div class="field field-inline">
             <label>
               <span>MLLM Provider</span>
-              <select name="mllm_provider">
+              <select name="mllm_provider" id="mllm_provider_select">
+                <option value="huawei_custom">huawei_custom</option>
                 <option value="vllm">vllm</option>
                 <option value="dashscope">dashscope</option>
                 <option value="openai">openai</option>
                 <option value="anthropic">anthropic</option>
-                <option value="huawei_custom">huawei_custom</option>
               </select>
             </label>
-            <label>
+            <label id="mllm_model_select_wrap">
               <span>MLLM 模型</span>
-              <input type="text" name="mllm_model" placeholder="例如 qwen3.5:9b">
+              <select name="mllm_model_select" id="mllm_model_select">
+                <option value="Qwen3-VL-235B-A22B-Instruct">Qwen3-VL-235B-A22B-Instruct</option>
+              </select>
+            </label>
+            <label id="mllm_model_text_wrap" class="hidden">
+              <span>MLLM 模型</span>
+              <input type="text" name="mllm_model_text" id="mllm_model_text" placeholder="例如 qwen3.5:9b">
             </label>
           </div>
 
           <div class="field field-inline">
             <label>
               <span>MLLM Base URL</span>
-              <input type="text" name="mllm_base_url" placeholder="例如 http://localhost:8201/v1">
+              <input type="text" name="mllm_base_url" id="mllm_base_url" placeholder="http://aitest-beta.rnd.huawei.com/v1">
             </label>
             <label>
               <span>Service Name</span>
-              <input type="text" name="mllm_service_name" placeholder="仅 huawei_custom 需要">
+              <input type="text" name="mllm_service_name" id="mllm_service_name" placeholder="仅 huawei_custom 需要">
             </label>
           </div>
 

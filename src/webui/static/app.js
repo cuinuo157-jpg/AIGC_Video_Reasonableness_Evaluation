@@ -40,6 +40,14 @@ const batchAvgScore = document.getElementById("batch-avg-score");
 const batchScoreMeta = document.getElementById("batch-score-meta");
 const batchSummaryGrid = document.getElementById("batch-summary-grid");
 const batchTableBody = document.getElementById("batch-table-body");
+const mllmProviderSelect = document.getElementById("mllm_provider_select");
+const mllmModelSelect = document.getElementById("mllm_model_select");
+const mllmModelSelectWrap = document.getElementById("mllm_model_select_wrap");
+const mllmModelText = document.getElementById("mllm_model_text");
+const mllmModelTextWrap = document.getElementById("mllm_model_text_wrap");
+const mllmBaseUrl = document.getElementById("mllm_base_url");
+const mllmServiceName = document.getElementById("mllm_service_name");
+const mllmApiKeyEl = document.querySelector('input[name="mllm_api_key"]');
 
 function setStatus(mode, title, text) {
   statusCard.className = `status-card ${mode}`;
@@ -177,6 +185,48 @@ function bindModeOptions() {
   toggleProcessingMode();
 }
 
+function populateHuaweiModels() {
+  if (!state.config || !state.config.huawei_models) return;
+  const models = state.config.huawei_models;
+  mllmModelSelect.innerHTML = "";
+  models.forEach((model) => {
+    const opt = document.createElement("option");
+    opt.value = model;
+    opt.textContent = model;
+    mllmModelSelect.appendChild(opt);
+  });
+}
+
+function switchMllmModelInput() {
+  const provider = mllmProviderSelect.value;
+  if (provider === "huawei_custom") {
+    mllmModelSelectWrap.classList.remove("hidden");
+    mllmModelTextWrap.classList.add("hidden");
+  } else {
+    mllmModelSelectWrap.classList.add("hidden");
+    mllmModelTextWrap.classList.remove("hidden");
+  }
+}
+
+function getMllmModelValue() {
+  if (mllmProviderSelect.value === "huawei_custom") {
+    return mllmModelSelect.value;
+  }
+  return mllmModelText.value;
+}
+
+function bindMllmProvider() {
+  mllmProviderSelect.addEventListener("change", () => {
+    switchMllmModelInput();
+    // Auto-fill base_url when switching to huawei_custom
+    if (mllmProviderSelect.value === "huawei_custom" && !mllmBaseUrl.value.trim()) {
+      mllmBaseUrl.value = "http://aitest-beta.rnd.huawei.com/v1";
+      mllmServiceName.value = "simple_client";
+    }
+  });
+  switchMllmModelInput();
+}
+
 function fillDemo() {
   if (state.processingMode === "batch") {
     form.elements.video_dir.value = "data/videos";
@@ -191,11 +241,18 @@ function fillDemo() {
   form.elements.save_visualizations.checked = Boolean(state.config.defaults.save_visualizations);
   form.elements.visualization_root.value = state.config.defaults.visualization_root;
   form.elements.enable_mllm.checked = Boolean(state.config.defaults.enable_mllm);
-  form.elements.mllm_provider.value = state.config.defaults.mllm_provider;
-  form.elements.mllm_model.value = state.config.defaults.mllm_model;
-  form.elements.mllm_base_url.value = state.config.defaults.mllm_base_url;
-  form.elements.mllm_api_key.value = state.config.defaults.mllm_api_key;
-  form.elements.mllm_service_name.value = state.config.defaults.mllm_service_name;
+  mllmProviderSelect.value = state.config.defaults.mllm_provider;
+  mllmBaseUrl.value = state.config.defaults.mllm_base_url || "";
+  mllmServiceName.value = state.config.defaults.mllm_service_name || "";
+  mllmApiKeyEl.value = state.config.defaults.mllm_api_key || "";
+  switchMllmModelInput();
+  if (mllmProviderSelect.value === "huawei_custom") {
+    if (state.config.defaults.mllm_model) {
+      mllmModelSelect.value = state.config.defaults.mllm_model;
+    }
+  } else {
+    mllmModelText.value = state.config.defaults.mllm_model || "";
+  }
   form.elements.sample_stride.value = state.config.defaults.sample_stride;
   form.elements.max_frames.value = state.config.defaults.max_frames;
   form.elements.max_side.value = state.config.defaults.max_side;
@@ -209,8 +266,6 @@ function collectFormData() {
     "au_backend",
     "au_external_python",
     "visualization_root",
-    "mllm_provider",
-    "mllm_model",
     "mllm_base_url",
     "mllm_api_key",
     "mllm_service_name",
@@ -220,11 +275,21 @@ function collectFormData() {
     "max_workers",
   ];
   plainElements.forEach((name) => {
-    const value = form.elements[name].value;
-    if (value !== "") {
-      payload.append(name, value);
+    const el = form.elements[name];
+    if (el && el.value !== "") {
+      payload.append(name, el.value);
     }
   });
+
+  // MLLM model: from select or text depending on provider
+  const modelValue = getMllmModelValue();
+  if (modelValue) {
+    payload.append("mllm_model", modelValue);
+  }
+  // MLLM provider
+  if (mllmProviderSelect.value) {
+    payload.append("mllm_provider", mllmProviderSelect.value);
+  }
 
   payload.append("scope", state.scope);
   payload.append("parallel", String(form.elements.parallel.checked));
@@ -421,6 +486,8 @@ async function fetchConfig() {
   renderScopeOptions();
   renderDimensionOptions();
   bindModeOptions();
+  populateHuaweiModels();
+  bindMllmProvider();
   fillDemo();
 }
 
