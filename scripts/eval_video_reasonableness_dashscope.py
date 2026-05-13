@@ -6,10 +6,10 @@
     pip install dashscope>=1.19.0
     或使用: uv sync --extra dashscope
 
-环境变量:
-    DASHSCOPE_API_KEY   必填，百炼 API Key
-    DASHSCOPE_BASE_URL  可选，国际区等需设置 endpoint，例如:
-        https://dashscope-intl.aliyuncs.com/api/v1
+配置方式（优先级从高到低）:
+    1. CLI 参数: --api-key, --model, --base-url
+    2. .env 环境变量: DASHSCOPE_API_KEY, MLLM_PROVIDER, MLLM_MODEL 等（通过 MLLMConfig 读取）
+    3. 硬编码兜底值（仅 model 有: qwen3-vl-8b-thinking）
 
 说明:
     - 与 HF Gradio 示例不同，此处走官方 HTTP API（MultiModalConversation）。
@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import sys
 import time
@@ -36,6 +35,7 @@ _repo_root_str = str(REPO_ROOT)
 if _repo_root_str not in sys.path:
     sys.path.insert(0, _repo_root_str)
 
+from src.mllm.config import MLLMConfig
 from src.mllm.dashscope_video_reasonableness import (
     DEFAULT_SYSTEM_PROMPT,
     build_user_text,
@@ -135,8 +135,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--model",
         type=str,
-        default="qwen3-vl-8b-thinking",
-        help="多模态模型名（默认 qwen3-vl-8b-thinking，可按控制台文档替换）",
+        default="",
+        help="多模态模型名（留空则从环境变量 MLLM_MODEL 读取，兜底 qwen3-vl-8b-thinking）",
     )
     p.add_argument("--max-frames", type=int, default=16, help="均匀采样帧数上限")
     p.add_argument(
@@ -160,14 +160,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--api-key",
         type=str,
-        default=os.environ.get("DASHSCOPE_API_KEY", ""),
-        help="API Key，默认读环境变量 DASHSCOPE_API_KEY",
+        default="",
+        help="API Key（留空则从 MLLM 配置 / 环境变量读取）",
     )
     p.add_argument(
         "--base-url",
         type=str,
-        default=os.environ.get("DASHSCOPE_BASE_URL", ""),
-        help="可选 API base，如国际区 https://dashscope-intl.aliyuncs.com/api/v1",
+        default="",
+        help="可选 API base（留空则从 MLLM 配置 / 环境变量读取），如国际区 https://dashscope-intl.aliyuncs.com/api/v1",
     )
     p.add_argument(
         "--output-dir",
@@ -181,14 +181,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
+    cfg = MLLMConfig.from_env()
     args = parse_args(argv)
-    if not args.api_key.strip():
-        print("错误: 请设置环境变量 DASHSCOPE_API_KEY 或使用 --api-key", file=sys.stderr)
+
+    # ── 合并配置：CLI 显式参数 > 环境变量 > 硬编码兜底 ──
+    api_key = args.api_key.strip() or cfg.api_key or ""
+    if not api_key:
+        print("错误: 请设置 DASHSCOPE_API_KEY / MLLM_API_KEY 环境变量，或使用 --api-key", file=sys.stderr)
         return 2
+    model = args.model.strip() or cfg.api_model or "qwen3-vl-8b-thinking"
+    base_url = args.base_url.strip() or cfg.api_base_url or None
 
     dashscope, MultiModalConversation = _ensure_dashscope()
-    base = args.base_url.strip() or None
-    configure_dashscope(dashscope, base)
+    configure_dashscope(dashscope, base_url)
 
     system_prompt = args.system_prompt.strip() or DEFAULT_SYSTEM_PROMPT
     videos = collect_videos(args.video.resolve())
@@ -199,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print("=" * 60)
     print("DashScope 视频合理性评测")
-    print(f"模型: {args.model}")
+    print(f"模型: {model}")
     print(f"视频数: {len(videos)}")
     print(f"输出: {args.output_dir}")
     print("=" * 60)
@@ -209,8 +214,8 @@ def main(argv: list[str] | None = None) -> int:
         try:
             row = run_one_video(
                 vp,
-                model=args.model,
-                api_key=args.api_key.strip(),
+                model=model,
+                api_key=api_key,
                 max_frames=args.max_frames,
                 task_prompt=args.task_prompt,
                 context=args.context or None,
@@ -232,7 +237,7 @@ def main(argv: list[str] | None = None) -> int:
     out_path = args.output_dir / f"reasonableness_{batch_id}.json"
     payload = {
         "batch_id": batch_id,
-        "model": args.model,
+        "model": model,
         "max_frames": args.max_frames,
         "results": all_results,
     }
