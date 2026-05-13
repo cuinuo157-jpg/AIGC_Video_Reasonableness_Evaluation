@@ -492,103 +492,119 @@ class JobManager:
         def append(message: str) -> None:
             self._append_log(job_id, message)
 
-        append(f"[job] 开始分析 {job.run_config.video_path or job.run_config.video_dir}")
-        append(f"[job] 范围={job.run_config.scope}, "
-               f"维度={','.join(job.run_config.selected_dimensions)}, "
-               f"device={job.run_config.device}, parallel={job.run_config.parallel}")
-        append(f"[job] AU 路由: backend={job.run_config.au_backend}, "
-               f"external_python={job.run_config.au_external_python or '-'}")
-        append(f"[job] 可视化产物: {'开启' if job.run_config.save_visualizations else '关闭'}, "
-               f"root={job.run_config.visualization_root or '-'}")
-        if job.run_config.enable_mllm:
-            append(f"[job] MLLM: provider={job.run_config.mllm_provider}, "
-                   f"model={job.run_config.mllm_model}, "
-                   f"base_url={job.run_config.mllm_base_url or '-'}, "
-                   f"service_name={job.run_config.mllm_service_name or '-'}")
-
-        if job.run_config.video_dir:
-            extensions = tuple(
-                e.strip() for e in job.run_config.file_extensions.split(",") if e.strip()
-            ) or BATCH_VIDEO_EXTENSIONS
-            video_list = scan_video_directory(
-                job.run_config.video_dir,
-                extensions=extensions,
-                recursive=job.run_config.recursive_scan,
-            )
-            if not video_list:
-                raise ValueError(f"目录中未找到匹配的视频文件: {job.run_config.video_dir}")
-            append(f"[batch] 扫描到 {len(video_list)} 个视频文件")
-            self._run_batch_job(job, video_list, append)
-            return
-
-        writer = _JobLogWriter(append)
-        tee_stdout = _TeeWriter(sys.stdout, writer)
-        tee_stderr = _TeeWriter(sys.stderr, writer)
-        root_logger = logging.getLogger()
-        log_handler = _JobLogHandler(append)
-        root_logger.addHandler(log_handler)
-
         try:
-            with redirect_stdout(tee_stdout), redirect_stderr(tee_stderr):
-                if job.run_config.save_visualizations:
-                    artifact_dir = self._build_artifact_dir(job)
-                    job.artifact_root = os.fspath(artifact_dir)
-                    report, elapsed, hub = run_analysis_with_hub(job.run_config)
-                else:
-                    report, elapsed = run_analysis(job.run_config)
-                    artifact_dir = None
-                    hub = None
+            append(f"[job] 开始分析 {job.run_config.video_path or job.run_config.video_dir}")
+            append(f"[job] 范围={job.run_config.scope}, "
+                   f"维度={','.join(job.run_config.selected_dimensions)}, "
+                   f"device={job.run_config.device}, parallel={job.run_config.parallel}")
+            append(f"[job] AU 路由: backend={job.run_config.au_backend}, "
+                   f"external_python={job.run_config.au_external_python or '-'}")
+            append(f"[job] 可视化产物: {'开启' if job.run_config.save_visualizations else '关闭'}, "
+                   f"root={job.run_config.visualization_root or '-'}")
+            if job.run_config.enable_mllm:
+                append(f"[job] MLLM: provider={job.run_config.mllm_provider}, "
+                       f"model={job.run_config.mllm_model}, "
+                       f"base_url={job.run_config.mllm_base_url or '-'}, "
+                       f"service_name={job.run_config.mllm_service_name or '-'}")
 
-            writer.flush()
-            result_path, log_path = self._build_output_paths(job)
-            result_json_path = os.fspath(result_path)
-            log_path_str = os.fspath(log_path)
-            payload = build_dashboard_report(report, job.run_config, elapsed)
+            if job.run_config.video_dir:
+                extensions = tuple(
+                    e.strip() for e in job.run_config.file_extensions.split(",") if e.strip()
+                ) or BATCH_VIDEO_EXTENSIONS
+                video_list = scan_video_directory(
+                    job.run_config.video_dir,
+                    extensions=extensions,
+                    recursive=job.run_config.recursive_scan,
+                )
+                if not video_list:
+                    raise ValueError(f"目录中未找到匹配的视频文件: {job.run_config.video_dir}")
+                append(f"[batch] 扫描到 {len(video_list)} 个视频文件")
+                self._run_batch_job(job, video_list, append)
+                return
 
-            if job.run_config.save_visualizations and artifact_dir is not None and hub is not None:
-                from src.webui.artifacts import generate_visual_artifacts
-                artifact_root, artifacts, artifacts_by_dimension = generate_visual_artifacts(
-                    report, job.run_config, hub, artifact_dir, log_fn=append)
-                payload["artifact_root"] = artifact_root
-                payload["artifacts"] = artifacts
-                for card in payload["dimensions"]:
-                    card["artifacts"] = artifacts_by_dimension.get(card["key"], [])
-                job.artifact_root = artifact_root
-                append(f"[job] 可视化产物已写入 {artifact_root}")
+            writer = _JobLogWriter(append)
+            tee_stdout = _TeeWriter(sys.stdout, writer)
+            tee_stderr = _TeeWriter(sys.stderr, writer)
+            root_logger = logging.getLogger()
+            log_handler = _JobLogHandler(append)
+            root_logger.addHandler(log_handler)
 
-            payload["result_json_path"] = result_json_path
-            payload["log_path"] = log_path_str
-            job.result_json_path = result_json_path
-            job.log_path = log_path_str
-            job.result = payload
-            append(f"[job] 结果已写入 {result_json_path}")
-            append(f"[job] 日志已写入 {log_path_str}")
-            self._persist_job_outputs(job, result_path, log_path)
+            try:
+                with redirect_stdout(tee_stdout), redirect_stderr(tee_stderr):
+                    if job.run_config.save_visualizations:
+                        artifact_dir = self._build_artifact_dir(job)
+                        job.artifact_root = os.fspath(artifact_dir)
+                        report, elapsed, hub = run_analysis_with_hub(job.run_config)
+                    else:
+                        report, elapsed = run_analysis(job.run_config)
+                        artifact_dir = None
+                        hub = None
 
-            with self._lock:
-                job.status = "completed"
-                job.completed_at = time.time()
-                job.updated_at = job.completed_at
+                writer.flush()
+                result_path, log_path = self._build_output_paths(job)
+                result_json_path = os.fspath(result_path)
+                log_path_str = os.fspath(log_path)
+                payload = build_dashboard_report(report, job.run_config, elapsed)
+
+                if job.run_config.save_visualizations and artifact_dir is not None and hub is not None:
+                    from src.webui.artifacts import generate_visual_artifacts
+                    artifact_root, artifacts, artifacts_by_dimension = generate_visual_artifacts(
+                        report, job.run_config, hub, artifact_dir, log_fn=append)
+                    payload["artifact_root"] = artifact_root
+                    payload["artifacts"] = artifacts
+                    for card in payload["dimensions"]:
+                        card["artifacts"] = artifacts_by_dimension.get(card["key"], [])
+                    job.artifact_root = artifact_root
+                    append(f"[job] 可视化产物已写入 {artifact_root}")
+
+                payload["result_json_path"] = result_json_path
+                payload["log_path"] = log_path_str
+                job.result_json_path = result_json_path
+                job.log_path = log_path_str
+                job.result = payload
+                append(f"[job] 结果已写入 {result_json_path}")
+                append(f"[job] 日志已写入 {log_path_str}")
+                self._persist_job_outputs(job, result_path, log_path)
+
+                with self._lock:
+                    job.status = "completed"
+                    job.completed_at = time.time()
+                    job.updated_at = job.completed_at
+
+            except Exception as exc:
+                writer.flush()
+                append(f"[job] 任务失败: {exc}")
+                with self._lock:
+                    job.status = "failed"
+                    job.error = str(exc)
+                    job.completed_at = time.time()
+                    job.updated_at = job.completed_at
+                try:
+                    result_path, log_path = self._build_output_paths(job)
+                    job.log_path = os.fspath(log_path)
+                    if job.result is not None:
+                        job.result_json_path = os.fspath(result_path)
+                    self._persist_job_outputs(job, result_path, log_path)
+                except Exception:
+                    logger.exception("persist failed job log")
+                logger.exception("job failed: %s", job_id)
+            finally:
+                root_logger.removeHandler(log_handler)
 
         except Exception as exc:
-            writer.flush()
-            append(f"[job] 任务失败: {exc}")
+            append(f"[job] 任务启动失败: {exc}")
+            logger.exception("job startup failed: %s", job_id)
             with self._lock:
                 job.status = "failed"
                 job.error = str(exc)
                 job.completed_at = time.time()
                 job.updated_at = job.completed_at
             try:
-                result_path, log_path = self._build_output_paths(job)
+                _, log_path = self._build_output_paths(job)
                 job.log_path = os.fspath(log_path)
-                if job.result is not None:
-                    job.result_json_path = os.fspath(result_path)
-                self._persist_job_outputs(job, result_path, log_path)
+                log_path.write_text("\n".join(job.logs), encoding="utf-8")
             except Exception:
-                logger.exception("persist failed job log")
-            logger.exception("job failed: %s", job_id)
-        finally:
-            root_logger.removeHandler(log_handler)
+                pass
 
 
 # ═══════════════════════════════════════════════════════════════════
