@@ -314,9 +314,17 @@ class JobManager:
     def get_job_snapshot(self, job_id: str) -> dict[str, Any]:
         job = self.get_job(job_id)
         with self._lock:
+            status = job.status
+            # Override if batch results show all videos done
+            if status == "running" and isinstance(job.result, dict) and job.result.get("batch"):
+                total = job.result.get("total_videos", 0)
+                done = (job.result.get("completed_videos", 0) +
+                        job.result.get("failed_videos", 0))
+                if total > 0 and done >= total:
+                    status = "completed"
             return {
                 "job_id": job.job_id,
-                "status": job.status,
+                "status": status,
                 "created_at": job.created_at,
                 "updated_at": job.updated_at,
                 "completed_at": job.completed_at,
@@ -333,12 +341,20 @@ class JobManager:
         with self._lock:
             safe_offset = max(0, min(offset, len(job.logs)))
             lines = job.logs[safe_offset:]
+            terminal = job.status in {"completed", "failed"}
+            # Also treat as complete if batch result shows all videos done
+            if not terminal and isinstance(job.result, dict) and job.result.get("batch"):
+                total = job.result.get("total_videos", 0)
+                done = (job.result.get("completed_videos", 0) +
+                        job.result.get("failed_videos", 0))
+                if total > 0 and done >= total:
+                    terminal = True
             return {
                 "job_id": job.job_id,
                 "offset": safe_offset,
                 "next_offset": len(job.logs),
                 "lines": lines,
-                "completed": job.status in {"completed", "failed"},
+                "completed": terminal,
             }
 
     def _append_log(self, job_id: str, message: str) -> None:
