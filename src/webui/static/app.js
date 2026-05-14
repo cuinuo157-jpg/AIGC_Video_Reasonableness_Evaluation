@@ -657,6 +657,10 @@ function renderBatchResults(data) {
   ].forEach(({ l, v }) => {
     const div = document.createElement("div");
     div.className = "summary-item";
+    if (l === "报告目录") {
+      div.classList.add("path-item");
+      div.title = v;
+    }
     div.innerHTML = `<span>${l}</span><strong>${v}</strong>`;
     batchSummaryGrid.appendChild(div);
   });
