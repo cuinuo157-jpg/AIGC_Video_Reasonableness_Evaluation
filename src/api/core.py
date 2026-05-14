@@ -532,6 +532,11 @@ class JobManager:
 
         # Set status BEFORE file I/O so frontend sees result even if writes fail
         with self._lock:
+            # Collect artifact roots for the artifact_root_path display
+            roots = [r.get("artifact_root") for r in batch_results if r.get("artifact_root")]
+            if roots:
+                # Use common parent directory as batch artifact root
+                job.artifact_root = os.fspath(Path(roots[0]).parent)
             job.result = final_report
             job.status = "completed"
             job.completed_at = time.time()
