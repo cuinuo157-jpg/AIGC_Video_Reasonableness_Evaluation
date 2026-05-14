@@ -220,11 +220,14 @@ function bindMllmProvider() {
     switchMllmModelInput();
     const provider = mllmProviderSelect.value;
     if (provider === "huawei_custom") {
-      if (!mllmBaseUrl.value.trim()) mllmBaseUrl.value = "http://aitest-beta.rnd.huawei.com/v1";
-      if (!mllmServiceName.value.trim()) mllmServiceName.value = "simple_client";
+      mllmBaseUrl.value = "http://aitest-beta.rnd.huawei.com/v1";
+      mllmServiceName.value = "simple_client";
     } else if (provider === "dashscope") {
-      if (!mllmBaseUrl.value.trim()) mllmBaseUrl.value = "https://dashscope-intl.aliyuncs.com/api/v1";
-      if (!mllmApiKeyEl.value.trim()) mllmApiKeyEl.value = "sk-724d2dde4f7948a695e5af01a9a198c2";
+      mllmBaseUrl.value = "https://dashscope-intl.aliyuncs.com/api/v1";
+      mllmApiKeyEl.value = "sk-724d2dde4f7948a695e5af01a9a198c2";
+    } else {
+      mllmBaseUrl.value = "";
+      mllmServiceName.value = "";
     }
   });
   switchMllmModelInput();
