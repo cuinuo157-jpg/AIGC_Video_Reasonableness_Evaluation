@@ -177,7 +177,7 @@ def evaluate(request: EvaluateRequest) -> dict[str, Any]:
     Returns a job_id immediately. Poll GET /api/jobs/{job_id} for results.
     """
     mgr = get_job_manager()
-    payload = request.model_dump(exclude_none=True)
+    payload = request.dict(exclude_none=True)
     config = parse_analysis_config(payload)
     job = mgr.create_job(config)
     video_name = (
