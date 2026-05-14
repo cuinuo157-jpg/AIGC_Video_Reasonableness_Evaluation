@@ -14,3 +14,5 @@ https://console-mlops.hwcloudtest.cn/v3 model字段填写镜像环境模型名�
 http://10.34.239.193:8989/v3 model字段填写镜像环境模型名称@版本号
 
 服务的地址：http://10.34.236.171:8080
+name: serviceName
+value: qwen3vl_8b_wf_jbw
