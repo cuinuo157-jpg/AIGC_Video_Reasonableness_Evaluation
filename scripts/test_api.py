@@ -6,7 +6,7 @@
 
 用法:
     # 单视频
-    python scripts/test_api.py --video data/sample.mp4
+    python test_api.py --video data/sample.mp4
 
     # 批量目录
     python scripts/test_api.py --dir data/videos
@@ -15,7 +15,7 @@
     python scripts/test_api.py --video data/sample.mp4 --url http://10.0.0.5:8000
 
     # 健康检查
-    python scripts/test_api.py --health
+    python test_api.py --health
 
 跨平台: 客户端可在 Windows / Linux / macOS 任意平台运行，
 只要能访问 API 服务器的 HTTP 端口即可。
@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -33,17 +34,35 @@ from pathlib import Path
 from typing import Any
 
 
+def _encode_multipart(fields: dict[str, str], file_field: str, file_path: str) -> tuple[bytes, str]:
+    """Build multipart/form-data body for file upload. Returns (body, content_type)."""
+    boundary = "---APIClientBoundary" + os.urandom(16).hex()
+    body_parts: list[bytes] = []
+    for name, value in fields.items():
+        body_parts.append(f"--{boundary}\r\n".encode())
+        body_parts.append(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode())
+        body_parts.append(f"{value}\r\n".encode())
+    filename = Path(file_path).name
+    body_parts.append(f"--{boundary}\r\n".encode())
+    body_parts.append(f'Content-Disposition: form-data; name="{file_field}"; filename="{filename}"\r\n'.encode())
+    body_parts.append(b"Content-Type: video/mp4\r\n\r\n")
+    body_parts.append(Path(file_path).read_bytes())
+    body_parts.append(f"\r\n--{boundary}--\r\n".encode())
+    return b"".join(body_parts), f"multipart/form-data; boundary={boundary}"
+
+
 class APIClient:
     """Minimal HTTP client for the evaluation API."""
 
     def __init__(self, base_url: str = "http://localhost:8000") -> None:
         self.base_url = base_url.rstrip("/")
 
-    def _request(self, method: str, path: str, body: dict | None = None) -> dict[str, Any]:
+    def _request(self, method: str, path: str, body: dict | None = None,
+                 raw_body: bytes | None = None, content_type: str | None = None) -> dict[str, Any]:
         url = f"{self.base_url}{path}"
-        data = json.dumps(body).encode("utf-8") if body else None
+        data = raw_body if raw_body is not None else (json.dumps(body).encode("utf-8") if body else None)
         req = urllib.request.Request(url, data=data, method=method)
-        req.add_header("Content-Type", "application/json")
+        req.add_header("Content-Type", content_type or "application/json")
         req.add_header("Accept", "application/json")
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
@@ -70,6 +89,15 @@ class APIClient:
     def submit(self, **params: Any) -> dict:
         """提交分析任务。可传 video_path 或 video_dir。"""
         return self._request("POST", "/api/evaluate", body=params)
+
+    def submit_upload(self, file_path: str, **params: Any) -> dict:
+        """提交分析任务 + 上传视频文件。"""
+        fields: dict[str, str] = {}
+        for k, v in params.items():
+            if v is not None and v != "":
+                fields[k] = str(v).lower() if isinstance(v, bool) else str(v)
+        raw_body, content_type = _encode_multipart(fields, "file", file_path)
+        return self._request("POST", "/api/evaluate/upload", raw_body=raw_body, content_type=content_type)
 
     def job_status(self, job_id: str) -> dict:
         return self._request("GET", f"/api/jobs/{job_id}")
@@ -169,6 +197,7 @@ def main() -> None:
     parser.add_argument("--mllm-model", help="MLLM 模型名")
     parser.add_argument("--parallel", action="store_true", default=True, help="并发检测")
     parser.add_argument("--no-parallel", action="store_false", dest="parallel", help="关闭并发")
+    parser.add_argument("--upload", action="store_true", help="上传本地视频文件到服务器（远程调用时必须）")
     parser.add_argument("--json", action="store_true", help="直接输出原始 JSON（不格式化）")
     args = parser.parse_args()
 
@@ -211,18 +240,34 @@ def main() -> None:
         )
     else:
         video_path = args.video
-        if not Path(video_path).exists():
-            print(f"视频不存在: {video_path}")
-            sys.exit(1)
-        print(f"单视频分析: {video_path}")
-        job_data = client.submit(
-            video_path=video_path,
-            scope=args.scope,
-            device=args.device,
-            enable_mllm=args.enable_mllm,
-            mllm_provider=args.mllm_provider,
-            parallel=args.parallel,
-        )
+        need_upload = args.upload or not args.url.startswith("http://localhost") and not args.url.startswith("http://127.")
+        if need_upload:
+            if not Path(video_path).exists():
+                print(f"本地视频不存在: {video_path}")
+                sys.exit(1)
+            print(f"上传+分析: {video_path} → {args.url}")
+            job_data = client.submit_upload(
+                file_path=video_path,
+                scope=args.scope,
+                device=args.device,
+                enable_mllm=args.enable_mllm,
+                mllm_provider=args.mllm_provider,
+                parallel=args.parallel,
+            )
+        else:
+            if not Path(video_path).exists():
+                print(f"本地视频不存在: {video_path}")
+                print(f"  提示: 远程调用请加 --upload 上传文件到服务器")
+                sys.exit(1)
+            print(f"单视频分析 (服务端路径): {video_path}")
+            job_data = client.submit(
+                video_path=video_path,
+                scope=args.scope,
+                device=args.device,
+                enable_mllm=args.enable_mllm,
+                mllm_provider=args.mllm_provider,
+                parallel=args.parallel,
+            )
 
     job_id = job_data["job_id"]
     print(f"任务已创建: {job_id}")
