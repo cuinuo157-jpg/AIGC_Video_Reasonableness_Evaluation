@@ -16,11 +16,13 @@ Usage:
 from __future__ import annotations
 
 import logging
+import os
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -33,6 +35,7 @@ from .core import (
     DEFAULT_MAX_SIDE,
     DEFAULT_RESULTS_DIR,
     DEFAULT_SAMPLE_STRIDE,
+    DEFAULT_UPLOAD_DIR,
     DIMENSION_CATALOG,
     FULL_DIMENSIONS,
     JobManager,
@@ -202,3 +205,58 @@ def get_job_logs(job_id: str, offset: int = Query(0, ge=0)) -> dict[str, Any]:
     """Streaming log endpoint. Poll with increasing offset for real-time logs."""
     mgr = get_job_manager()
     return mgr.get_job_logs(job_id, offset=offset)
+
+
+@app.post("/api/evaluate/upload", response_model=EvaluateAccepted, status_code=202)
+async def evaluate_upload(
+    file: UploadFile = File(..., description="视频文件"),
+    scope: str = Form(default="anomaly"),
+    device: str = Form(default="cuda"),
+    enable_mllm: bool = Form(default=False),
+    mllm_provider: str = Form(default="huawei_custom"),
+    mllm_model: str = Form(default=""),
+    mllm_base_url: str = Form(default=""),
+    mllm_api_key: str = Form(default=""),
+    mllm_service_name: str = Form(default=""),
+    parallel: bool = Form(default=True),
+    max_workers: int | None = Form(default=None),
+    sample_stride: int = Form(default=2),
+    max_frames: int | None = Form(default=None),
+    max_side: int | None = Form(default=None),
+    save_visualizations: bool = Form(default=False),
+) -> dict[str, Any]:
+    """Submit analysis via file upload. Saves file server-side then processes."""
+    mgr = get_job_manager()
+
+    upload_dir = DEFAULT_UPLOAD_DIR
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = Path(file.filename or "upload.mp4").name.replace(" ", "_")
+    stem = Path(safe_name).stem[:80] or "video"
+    suffix = Path(safe_name).suffix or ".mp4"
+    dest = upload_dir / f"{int(time.time())}_{stem}{suffix}"
+    dest.write_bytes(await file.read())
+
+    payload = {
+        "video_path": os.fspath(dest),
+        "scope": scope,
+        "device": device,
+        "enable_mllm": enable_mllm,
+        "mllm_provider": mllm_provider,
+        "mllm_model": mllm_model or None,
+        "mllm_base_url": mllm_base_url or None,
+        "mllm_api_key": mllm_api_key or None,
+        "mllm_service_name": mllm_service_name or None,
+        "parallel": parallel,
+        "max_workers": max_workers,
+        "sample_stride": sample_stride,
+        "max_frames": max_frames,
+        "max_side": max_side,
+        "save_visualizations": save_visualizations,
+    }
+    config = parse_analysis_config(payload)
+    job = mgr.create_job(config)
+    return {
+        "job_id": job.job_id,
+        "status": job.status,
+        "video_name": dest.name,
+    }
