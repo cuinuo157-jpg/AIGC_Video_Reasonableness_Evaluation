@@ -396,7 +396,11 @@ class JobManager:
         return os.fspath(result_path), os.fspath(log_path)
 
     def _run_batch_job(self, job: Job, video_list: list[str], append_fn: Any) -> None:
-        """Run batch analysis sequentially for all videos in the list."""
+        """Run batch analysis sequentially for all videos in the list.
+
+        Creates a single EvaluationPipeline instance so models are loaded once
+        and reused across all videos. Only the FeatureHub is recreated per video.
+        """
         total = len(video_list)
         batch_results: list[dict[str, Any]] = []
         batch_start = time.perf_counter()
@@ -408,11 +412,34 @@ class JobManager:
         log_handler = _JobLogHandler(append_fn)
         root_logger.addHandler(log_handler)
 
+        # ── Build shared pipeline (models loaded once) ──
+        mllm_client = None
+        if job.run_config.enable_mllm:
+            mllm_client = MLLMClient(MLLMConfig.from_env_with_overrides(
+                backend="api", api_provider=job.run_config.mllm_provider,
+                api_model=job.run_config.mllm_model,
+                api_key=job.run_config.mllm_api_key,
+                api_base_url=job.run_config.mllm_base_url,
+                api_service_name=job.run_config.mllm_service_name,
+            ))
+        pipeline = EvaluationPipeline(
+            device=job.run_config.device,
+            enable_mllm=job.run_config.enable_mllm,
+            mllm_client=mllm_client,
+            video_config=job.run_config.video_config,
+            parallel=job.run_config.parallel,
+            max_workers=job.run_config.max_workers,
+            au_backend=job.run_config.au_backend,
+            au_external_python=job.run_config.au_external_python,
+        )
+        is_anomaly = job.run_config.scope == "anomaly"
+
         try:
             for idx, video_path in enumerate(video_list, 1):
                 video_name = Path(video_path).name
                 append_fn(f"[batch] 处理 {idx}/{total}: {video_name}")
 
+                # Per-video config (metadata only, pipeline already created)
                 single_config = AnalysisConfig(
                     video_path=video_path,
                     scope=job.run_config.scope,
@@ -435,12 +462,29 @@ class JobManager:
 
                 try:
                     append_fn(f"[batch] {idx}/{total}: 开始抽帧与分析 {video_name}")
+                    t0 = time.perf_counter()
                     with redirect_stdout(tee_stdout), redirect_stderr(tee_stderr):
-                        if single_config.save_visualizations:
-                            report, elapsed, hub = run_analysis_with_hub(single_config)
+                        if is_anomaly:
+                            if single_config.save_visualizations:
+                                report, hub = pipeline.detect_anomalies_with_hub(
+                                    video_path, anomaly_types=single_config.selected_dimensions,
+                                    parallel=single_config.parallel, max_workers=single_config.max_workers)
+                            else:
+                                report = pipeline.detect_anomalies(
+                                    video_path, anomaly_types=single_config.selected_dimensions,
+                                    parallel=single_config.parallel, max_workers=single_config.max_workers)
+                                hub = None
                         else:
-                            report, elapsed = run_analysis(single_config)
-                            hub = None
+                            if single_config.save_visualizations:
+                                report, hub = pipeline.evaluate_with_hub(
+                                    video_path, selected_dimensions=single_config.selected_dimensions,
+                                    parallel=single_config.parallel, max_workers=single_config.max_workers)
+                            else:
+                                report = pipeline.evaluate(
+                                    video_path, selected_dimensions=single_config.selected_dimensions,
+                                    parallel=single_config.parallel, max_workers=single_config.max_workers)
+                                hub = None
+                    elapsed = time.perf_counter() - t0
                     writer.flush()
                     result_data = build_dashboard_report(report, single_config, elapsed)
 
