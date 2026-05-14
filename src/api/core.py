@@ -395,6 +395,16 @@ class JobManager:
         log_path.write_text("\n".join(job.logs), encoding="utf-8")
         return os.fspath(result_path), os.fspath(log_path)
 
+    def _cleanup_uploaded_video(self, video_path: str) -> None:
+        """Delete uploaded video file if it's in the upload directory."""
+        try:
+            p = Path(video_path).resolve()
+            upload_root = DEFAULT_UPLOAD_DIR.resolve()
+            if str(p).startswith(str(upload_root)) and p.exists():
+                p.unlink()
+        except Exception:
+            pass
+
     def _run_batch_job(self, job: Job, video_list: list[str], append_fn: Any) -> None:
         """Run batch analysis sequentially for all videos in the list.
 
@@ -601,6 +611,10 @@ class JobManager:
             f"成功 {completed}, 失败 {failed}, 平均分 {avg:.3f}, 总耗时 {total_elapsed:.1f}s"
         )
 
+        # Clean up uploaded videos
+        for vp in video_list:
+            self._cleanup_uploaded_video(vp)
+
     def _run_job(self, job_id: str) -> None:
         job = self.get_job(job_id)
         with self._lock:
@@ -697,6 +711,7 @@ class JobManager:
                     job.status = "completed"
                     job.completed_at = time.time()
                     job.updated_at = job.completed_at
+                self._cleanup_uploaded_video(job.run_config.video_path)
 
             except Exception as exc:
                 writer.flush()
@@ -706,6 +721,7 @@ class JobManager:
                     job.error = str(exc)
                     job.completed_at = time.time()
                     job.updated_at = job.completed_at
+                self._cleanup_uploaded_video(job.run_config.video_path)
                 try:
                     result_path, log_path = self._build_output_paths(job)
                     job.log_path = os.fspath(log_path)

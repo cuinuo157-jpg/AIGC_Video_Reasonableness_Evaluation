@@ -194,7 +194,13 @@ def main() -> None:
     parser.add_argument("--device", default="cuda", help="推理设备")
     parser.add_argument("--enable-mllm", action="store_true", help="启用 MLLM/VLM")
     parser.add_argument("--mllm-provider", default="huawei_custom", help="MLLM 提供方")
-    parser.add_argument("--mllm-model", help="MLLM 模型名")
+    parser.add_argument("--mllm-model", default=None, help="MLLM 模型名")
+    parser.add_argument("--mllm-base-url", default=None, help="MLLM API 地址")
+    parser.add_argument("--mllm-api-key", default=None, help="MLLM API 密钥")
+    parser.add_argument("--mllm-service-name", default=None, help="huawei_custom service_name")
+    parser.add_argument("--sample-stride", type=int, default=2, help="采样步长")
+    parser.add_argument("--max-frames", type=int, default=None, help="最大帧数")
+    parser.add_argument("--max-side", type=int, default=None, help="最大边长")
     parser.add_argument("--parallel", action="store_true", default=True, help="并发检测")
     parser.add_argument("--no-parallel", action="store_false", dest="parallel", help="关闭并发")
     parser.add_argument("--upload", action="store_true", help="上传本地视频文件到服务器（远程调用时必须）")
@@ -252,7 +258,14 @@ def main() -> None:
                 device=args.device,
                 enable_mllm=args.enable_mllm,
                 mllm_provider=args.mllm_provider,
+                mllm_model=args.mllm_model,
+                mllm_base_url=args.mllm_base_url,
+                mllm_api_key=args.mllm_api_key,
+                mllm_service_name=args.mllm_service_name,
                 parallel=args.parallel,
+                sample_stride=args.sample_stride,
+                max_frames=args.max_frames,
+                max_side=args.max_side,
             )
         else:
             if not Path(video_path).exists():
