@@ -413,24 +413,25 @@ class JobManager:
                 video_name = Path(video_path).name
                 append_fn(f"[batch] 处理 {idx}/{total}: {video_name}")
 
-                single_config = AnalysisConfig(
-                    video_path=video_path,
-                    scope=job.run_config.scope,
-                    selected_dimensions=job.run_config.selected_dimensions,
-                    device=job.run_config.device,
-                    au_backend=job.run_config.au_backend,
-                    au_external_python=job.run_config.au_external_python,
-                    enable_mllm=job.run_config.enable_mllm,
-                    mllm_provider=job.run_config.mllm_provider,
-                    mllm_model=job.run_config.mllm_model,
-                    mllm_base_url=job.run_config.mllm_base_url,
-                    mllm_api_key=job.run_config.mllm_api_key,
-                    mllm_service_name=job.run_config.mllm_service_name,
-                    save_visualizations=False,
-                    parallel=job.run_config.parallel,
-                    max_workers=job.run_config.max_workers,
-                    video_config=job.run_config.video_config,
-                )
+            single_config = AnalysisConfig(
+                video_path=video_path,
+                scope=job.run_config.scope,
+                selected_dimensions=job.run_config.selected_dimensions,
+                device=job.run_config.device,
+                au_backend=job.run_config.au_backend,
+                au_external_python=job.run_config.au_external_python,
+                enable_mllm=job.run_config.enable_mllm,
+                mllm_provider=job.run_config.mllm_provider,
+                mllm_model=job.run_config.mllm_model,
+                mllm_base_url=job.run_config.mllm_base_url,
+                mllm_api_key=job.run_config.mllm_api_key,
+                mllm_service_name=job.run_config.mllm_service_name,
+                save_visualizations=job.run_config.save_visualizations,
+                visualization_root=job.run_config.visualization_root,
+                parallel=job.run_config.parallel,
+                max_workers=job.run_config.max_workers,
+                video_config=job.run_config.video_config,
+            )
 
                 try:
                     append_fn(f"[batch] {idx}/{total}: 开始抽帧与分析 {video_name}")
