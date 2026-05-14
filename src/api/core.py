@@ -611,10 +611,6 @@ class JobManager:
             f"成功 {completed}, 失败 {failed}, 平均分 {avg:.3f}, 总耗时 {total_elapsed:.1f}s"
         )
 
-        # Clean up uploaded videos
-        for vp in video_list:
-            self._cleanup_uploaded_video(vp)
-
     def _run_job(self, job_id: str) -> None:
         job = self.get_job(job_id)
         with self._lock:
@@ -711,7 +707,6 @@ class JobManager:
                     job.status = "completed"
                     job.completed_at = time.time()
                     job.updated_at = job.completed_at
-                self._cleanup_uploaded_video(job.run_config.video_path)
 
             except Exception as exc:
                 writer.flush()
@@ -721,7 +716,6 @@ class JobManager:
                     job.error = str(exc)
                     job.completed_at = time.time()
                     job.updated_at = job.completed_at
-                self._cleanup_uploaded_video(job.run_config.video_path)
                 try:
                     result_path, log_path = self._build_output_paths(job)
                     job.log_path = os.fspath(log_path)
