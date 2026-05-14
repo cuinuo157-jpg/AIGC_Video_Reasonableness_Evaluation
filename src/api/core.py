@@ -436,7 +436,11 @@ class JobManager:
                 try:
                     append_fn(f"[batch] {idx}/{total}: 开始抽帧与分析 {video_name}")
                     with redirect_stdout(tee_stdout), redirect_stderr(tee_stderr):
-                        report, elapsed = run_analysis(single_config)
+                        if single_config.save_visualizations:
+                            report, elapsed, hub = run_analysis_with_hub(single_config)
+                        else:
+                            report, elapsed = run_analysis(single_config)
+                            hub = None
                     writer.flush()
                     result_data = build_dashboard_report(report, single_config, elapsed)
 
@@ -445,6 +449,21 @@ class JobManager:
                     for card in result_data.get("dimensions", []):
                         if card.get("vlm_raw_output") is not None:
                             vlm_outputs[card["key"]] = card["vlm_raw_output"]
+
+                    # Generate visual artifacts if enabled
+                    artifacts = []
+                    artifact_root = None
+                    if single_config.save_visualizations and hub is not None:
+                        stem = video_name.rsplit(".", 1)[0][:80] or "video"
+                        ts = time.strftime("%Y%m%d_%H%M%S", time.localtime(job.created_at))
+                        base_dir = Path(single_config.visualization_root or DEFAULT_VISUALIZATION_DIR).resolve()
+                        artifact_dir = base_dir / f"{ts}_{stem}_{job.job_id}"
+                        try:
+                            from src.webui.artifacts import generate_visual_artifacts
+                            artifact_root, artifacts, _ = generate_visual_artifacts(
+                                report, single_config, hub, artifact_dir, log_fn=append_fn)
+                        except Exception:
+                            pass
 
                     # Save per-video report
                     stem = Path(video_path).stem[:80] or "video"
@@ -464,6 +483,7 @@ class JobManager:
                         "active_dimensions": result_data.get("active_dimensions", []),
                         "vlm_outputs": vlm_outputs,
                         "report_path": os.fspath(report_path),
+                        "artifact_root": artifact_root,
                         "error": None,
                     })
                     append_fn(
