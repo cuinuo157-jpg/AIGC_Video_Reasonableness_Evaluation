@@ -105,6 +105,10 @@ class APIClient:
     def job_logs(self, job_id: str, offset: int = 0) -> dict:
         return self._request("GET", f"/api/jobs/{job_id}/logs?offset={offset}")
 
+    def cleanup(self, job_id: str) -> dict:
+        """Delete all server-side temporary files for a completed job."""
+        return self._request("POST", f"/api/jobs/{job_id}/cleanup")
+
 
 def wait_for_job(client: APIClient, job_id: str, poll_interval: float = 2.0) -> dict:
     """轮询等待任务完成，实时打印日志。"""
@@ -201,9 +205,11 @@ def main() -> None:
     parser.add_argument("--sample-stride", type=int, default=2, help="采样步长")
     parser.add_argument("--max-frames", type=int, default=None, help="最大帧数")
     parser.add_argument("--max-side", type=int, default=None, help="最大边长")
+    parser.add_argument("--save-vis", action="store_true", help="生成可视化产物")
     parser.add_argument("--parallel", action="store_true", default=True, help="并发检测")
     parser.add_argument("--no-parallel", action="store_false", dest="parallel", help="关闭并发")
     parser.add_argument("--upload", action="store_true", help="上传本地视频文件到服务器（远程调用时必须）")
+    parser.add_argument("--output", default=None, help="本地结果保存路径（默认保存到视频同目录 .result.json）")
     parser.add_argument("--json", action="store_true", help="直接输出原始 JSON（不格式化）")
     args = parser.parse_args()
 
@@ -262,6 +268,7 @@ def main() -> None:
                 mllm_base_url=args.mllm_base_url,
                 mllm_api_key=args.mllm_api_key,
                 mllm_service_name=args.mllm_service_name,
+                save_visualizations=args.save_vis,
                 parallel=args.parallel,
                 sample_stride=args.sample_stride,
                 max_frames=args.max_frames,
@@ -296,6 +303,24 @@ def main() -> None:
             print_result(final_data)
         else:
             print(f"\n任务失败: {result.get('error', '未知错误')}")
+
+    # Save result locally
+    result_path = None
+    if args.output:
+        result_path = Path(args.output)
+    elif args.video:
+        result_path = Path(args.video).with_suffix(".result.json")
+    if result_path:
+        result_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"\n结果已保存到: {result_path}")
+
+    # Clean up server-side temporary files
+    try:
+        deleted = client.cleanup(job_id)
+        if deleted.get("count", 0) > 0:
+            print(f"服务端已清理 {deleted['count']} 个临时文件")
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

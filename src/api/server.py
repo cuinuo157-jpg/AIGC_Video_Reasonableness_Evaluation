@@ -260,3 +260,68 @@ async def evaluate_upload(
         "status": job.status,
         "video_name": dest.name,
     }
+
+
+@app.post("/api/jobs/{job_id}/cleanup")
+def cleanup_job(job_id: str) -> dict[str, Any]:
+    """Delete all temporary files for a completed job."""
+    mgr = get_job_manager()
+    job = mgr.get_job(job_id)
+    deleted: list[str] = []
+
+    # Delete uploaded video
+    vp = job.run_config.video_path
+    if vp:
+        try:
+            p = Path(vp)
+            if p.exists():
+                p.unlink()
+                deleted.append(str(p))
+        except Exception:
+            pass
+
+    # Delete result JSON
+    if job.result_json_path:
+        try:
+            p = Path(job.result_json_path)
+            if p.exists():
+                p.unlink()
+                deleted.append(str(p))
+        except Exception:
+            pass
+
+    # Delete log file
+    if job.log_path:
+        try:
+            p = Path(job.log_path)
+            if p.exists():
+                p.unlink()
+                deleted.append(str(p))
+        except Exception:
+            pass
+
+    # Delete artifact directory
+    if job.artifact_root:
+        try:
+            import shutil
+            p = Path(job.artifact_root)
+            if p.is_dir():
+                shutil.rmtree(p)
+                deleted.append(str(p))
+        except Exception:
+            pass
+
+    # Delete per-video reports for batch
+    if isinstance(job.result, dict) and job.result.get("batch"):
+        for vr in job.result.get("video_results", []):
+            rp = vr.get("report_path")
+            if rp:
+                try:
+                    p = Path(rp)
+                    if p.exists():
+                        p.unlink()
+                        deleted.append(str(p))
+                except Exception:
+                    pass
+
+    return {"deleted": deleted, "count": len(deleted)}
