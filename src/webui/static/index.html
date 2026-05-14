@@ -9,7 +9,7 @@
 <body>
   <div class="page-shell">
     <header class="hero">
-      <div>
+      <div class="hero-copy-block">
         <p class="eyebrow">AIGC Video Reasonableness Evaluation</p>
         <h1>视频异常检测与维度诊断工作台</h1>
         <p class="hero-copy">
@@ -24,355 +24,369 @@
       </div>
     </header>
 
-    <main class="layout">
-      <section class="panel control-panel">
-        <div class="panel-head">
-          <h2>检测配置</h2>
-          <p>支持本地路径或文件上传，两者二选一即可。</p>
-        </div>
-        <form id="analysis-form">
-          <div class="field">
-            <span>处理模式</span>
-            <div id="mode-options" class="scope-grid">
-              <label class="scope-option">
-                <input type="radio" name="processing_mode" value="single" checked>
-                <div>
-                  <strong>单视频</strong>
-                  <small>上传单个视频或填写本地路径进行分析。</small>
-                </div>
-              </label>
-              <label class="scope-option">
-                <input type="radio" name="processing_mode" value="batch">
-                <div>
-                  <strong>批量处理</strong>
-                  <small>提供视频目录，自动扫描并逐一分析所有视频。</small>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          <div id="single-fields">
-          <label class="field">
-            <span>本地视频路径</span>
-            <input type="text" name="video_path" placeholder="例如 data/sample.mp4">
-          </label>
-
-          <label class="field">
-            <span>上传视频文件</span>
-            <input type="file" name="video_file" accept="video/*">
-          </label>
-          </div>
-
-          <div id="batch-fields" class="hidden">
-          <label class="field">
-            <span>视频目录</span>
-            <input type="text" name="video_dir" placeholder="例如 data/videos">
-          </label>
-          <div class="field field-inline">
-            <label>
-              <span>文件扩展名</span>
-              <input type="text" name="file_extensions" value=".mp4,.avi,.mov,.mkv,.webm">
-            </label>
-            <label class="toggle">
-              <input type="checkbox" name="recursive_scan">
-              <span>递归扫描子目录</span>
-            </label>
-          </div>
-          </div>
-
-          <div class="field">
-            <span>分析范围</span>
-            <div id="scope-options" class="scope-grid"></div>
-          </div>
-
-          <div class="field">
-            <span>异常/维度选择</span>
-            <div id="dimension-options" class="check-grid"></div>
-          </div>
-
-          <div class="field field-inline">
-            <label>
-              <span>设备</span>
-              <input type="text" name="device" value="cuda">
-            </label>
-            <label>
-              <span>AU 后端</span>
-              <select name="au_backend">
-                <option value="subprocess">subprocess</option>
-                <option value="local">local</option>
-              </select>
-            </label>
-            <label>
-              <span>最大线程</span>
-              <input type="number" name="max_workers" min="1" placeholder="自动">
-            </label>
-          </div>
-
-          <label class="field">
-            <span>Py-Feat Python 路径</span>
-            <input
-              type="text"
-              name="au_external_python"
-              placeholder="例如 D:\ProgramData\Anaconda3\envs\pyfeat\python.exe"
-            >
-          </label>
-
-          <div class="field field-inline">
-            <label>
-              <span>采样步长</span>
-              <input type="number" name="sample_stride" min="1" value="2">
-            </label>
-            <label>
-              <span>最大帧数</span>
-              <input type="number" name="max_frames" min="2" value="48">
-            </label>
-            <label>
-              <span>最大边长</span>
-              <input type="number" name="max_side" min="64" value="640">
-            </label>
-          </div>
-
-          <div class="field toggle-row">
-            <label class="toggle">
-              <input type="checkbox" name="parallel" checked>
-              <span>启用并发检测</span>
-            </label>
-            <label class="toggle">
-              <input type="checkbox" name="save_visualizations">
-              <span>输出可视化产物</span>
-            </label>
-            <label class="toggle">
-              <input type="checkbox" name="enable_mllm">
-              <span>启用 MLLM/VLM</span>
-            </label>
-          </div>
-
-          <label class="field">
-            <span>可视化输出目录</span>
-            <input type="text" name="visualization_root" placeholder="例如 outputs/webui_artifacts">
-          </label>
-
-          <div class="field field-inline">
-            <label>
-              <span>MLLM Provider</span>
-              <select name="mllm_provider" id="mllm_provider_select">
-                <option value="huawei_custom">huawei_custom</option>
-                <option value="vllm">vllm</option>
-                <option value="dashscope">dashscope</option>
-                <option value="openai">openai</option>
-                <option value="anthropic">anthropic</option>
-              </select>
-            </label>
-            <label id="mllm_model_select_wrap">
-              <span>MLLM 模型</span>
-              <select name="mllm_model_select" id="mllm_model_select">
-                <option value="Qwen3-VL-235B-A22B-Instruct">Qwen3-VL-235B-A22B-Instruct</option>
-              </select>
-            </label>
-            <label id="mllm_model_text_wrap" class="hidden">
-              <span>MLLM 模型</span>
-              <input type="text" name="mllm_model_text" id="mllm_model_text" placeholder="例如 qwen3.5:9b">
-            </label>
-          </div>
-
-          <div class="field field-inline">
-            <label>
-              <span>MLLM Base URL</span>
-              <input type="text" name="mllm_base_url" id="mllm_base_url" placeholder="http://aitest-beta.rnd.huawei.com/v1">
-            </label>
-            <label>
-              <span>Service Name</span>
-              <input type="text" name="mllm_service_name" id="mllm_service_name" placeholder="仅 huawei_custom 需要">
-            </label>
-          </div>
-
-          <label class="field">
-            <span>MLLM API Key</span>
-            <input type="password" name="mllm_api_key" placeholder="留空则使用环境变量或免鉴权">
-          </label>
-
-          <div class="action-row">
-            <button type="submit" class="primary-btn">开始分析</button>
-            <button type="button" id="fill-demo" class="ghost-btn">填入示例</button>
-          </div>
-        </form>
-      </section>
-
-      <section class="panel status-panel">
-        <div class="panel-head">
-          <h2>运行状态</h2>
-          <p>分析执行期间会显示当前状态、结果文件路径与实时日志。</p>
-        </div>
-        <div id="status-card" class="status-card idle">
-          <div class="status-indicator"></div>
-          <div>
-            <h3 id="status-title">等待提交</h3>
-            <p id="status-text">配置完成后点击“开始分析”。</p>
-          </div>
-        </div>
-        <div class="info-list">
-          <div>
-            <span class="info-k">后端</span>
-            <span class="info-v">标准库 HTTP 服务</span>
-          </div>
-          <div>
-            <span class="info-k">结果</span>
-            <span class="info-v">综合分 + 维度卡片 + 事件摘要</span>
-          </div>
-          <div>
-            <span class="info-k">优化</span>
-            <span class="info-v">共享取帧、限帧、缩放、并发执行</span>
-          </div>
-        </div>
-        <div class="artifact-block">
-          <div class="artifact-head">
-            <h3>产物路径</h3>
-            <button type="button" id="clear-logs" class="mini-btn">清空日志视图</button>
-          </div>
-          <div class="artifact-list">
-            <div class="artifact-item">
-              <span class="artifact-k">结果 JSON</span>
-              <code id="result-path">-</code>
-            </div>
-            <div class="artifact-item">
-              <span class="artifact-k">日志文件</span>
-              <code id="log-path">-</code>
-            </div>
-            <div class="artifact-item">
-              <span class="artifact-k">可视化目录</span>
-              <code id="artifact-root-path">-</code>
-            </div>
-          </div>
-        </div>
-        <div class="log-console-wrap">
-          <div class="artifact-head">
-            <h3>实时终端日志</h3>
-            <span id="log-meta" class="log-meta">等待任务启动</span>
-          </div>
-          <pre id="log-console" class="log-console"></pre>
-      </div>
-    </section>
-
-    <section id="results-panel" class="results-panel hidden">
-      <div class="results-overview">
-        <div class="panel score-panel">
+    <main class="workspace">
+      <section class="layout">
+        <section class="panel control-panel">
           <div class="panel-head">
-            <h2>综合结果</h2>
-            <p id="result-video">-</p>
+            <h2>检测配置</h2>
+            <p>支持本地路径或文件上传，两者二选一即可。</p>
           </div>
-          <div class="score-wrap">
-            <div id="final-score-ring" class="score-ring">
-              <div class="score-core">
-                <strong id="final-score-value">0.000</strong>
-                <span>综合分</span>
+          <form id="analysis-form">
+            <div class="form-cluster form-cluster-spotlight">
+              <div class="field">
+                <span>处理模式</span>
+                <div id="mode-options" class="scope-grid">
+                  <label class="scope-option">
+                    <input type="radio" name="processing_mode" value="single" checked>
+                    <div>
+                      <strong>单视频</strong>
+                      <small>上传单个视频或填写本地路径进行分析。</small>
+                    </div>
+                  </label>
+                  <label class="scope-option">
+                    <input type="radio" name="processing_mode" value="batch">
+                    <div>
+                      <strong>批量处理</strong>
+                      <small>提供视频目录，自动扫描并逐一分析所有视频。</small>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div id="single-fields" class="field-stack">
+                <label class="field">
+                  <span>本地视频路径</span>
+                  <input type="text" name="video_path" placeholder="例如 data/sample.mp4">
+                </label>
+
+                <label class="field">
+                  <span>上传视频文件</span>
+                  <input type="file" name="video_file" accept="video/*">
+                </label>
+              </div>
+
+              <div id="batch-fields" class="field-stack hidden">
+                <label class="field">
+                  <span>视频目录</span>
+                  <input type="text" name="video_dir" placeholder="例如 data/videos">
+                </label>
+                <div class="field field-inline">
+                  <label>
+                    <span>文件扩展名</span>
+                    <input type="text" name="file_extensions" value=".mp4,.avi,.mov,.mkv,.webm">
+                  </label>
+                  <label class="toggle">
+                    <input type="checkbox" name="recursive_scan">
+                    <span>递归扫描子目录</span>
+                  </label>
+                </div>
               </div>
             </div>
-            <div class="score-meta" id="score-meta"></div>
-          </div>
-          <div id="artifact-ribbon" class="artifact-ribbon"></div>
-        </div>
 
-        <div class="panel summary-panel">
+            <div class="form-cluster">
+              <div class="field">
+                <span>分析范围</span>
+                <div id="scope-options" class="scope-grid"></div>
+              </div>
+
+              <div class="field">
+                <span>异常/维度选择</span>
+                <div id="dimension-options" class="check-grid"></div>
+              </div>
+            </div>
+
+            <div class="form-cluster">
+              <div class="field field-inline">
+                <label>
+                  <span>设备</span>
+                  <input type="text" name="device" value="cuda">
+                </label>
+                <label>
+                  <span>AU 后端</span>
+                  <select name="au_backend">
+                    <option value="subprocess">subprocess</option>
+                    <option value="local">local</option>
+                  </select>
+                </label>
+                <label>
+                  <span>最大线程</span>
+                  <input type="number" name="max_workers" min="1" placeholder="自动">
+                </label>
+              </div>
+
+              <label class="field">
+                <span>Py-Feat Python 路径</span>
+                <input
+                  type="text"
+                  name="au_external_python"
+                  placeholder="例如 D:\ProgramData\Anaconda3\envs\pyfeat\python.exe"
+                >
+              </label>
+
+              <div class="field field-inline">
+                <label>
+                  <span>采样步长</span>
+                  <input type="number" name="sample_stride" min="1" value="2">
+                </label>
+                <label>
+                  <span>最大帧数</span>
+                  <input type="number" name="max_frames" min="2" value="48">
+                </label>
+                <label>
+                  <span>最大边长</span>
+                  <input type="number" name="max_side" min="64" value="640">
+                </label>
+              </div>
+
+              <div class="field toggle-row">
+                <label class="toggle">
+                  <input type="checkbox" name="parallel" checked>
+                  <span>启用并发检测</span>
+                </label>
+                <label class="toggle">
+                  <input type="checkbox" name="save_visualizations">
+                  <span>输出可视化产物</span>
+                </label>
+                <label class="toggle">
+                  <input type="checkbox" name="enable_mllm">
+                  <span>启用 MLLM/VLM</span>
+                </label>
+              </div>
+
+              <label class="field">
+                <span>可视化输出目录</span>
+                <input type="text" name="visualization_root" placeholder="例如 outputs/webui_artifacts">
+              </label>
+            </div>
+
+            <div class="form-cluster">
+              <div class="field field-inline">
+                <label>
+                  <span>MLLM Provider</span>
+                  <select name="mllm_provider" id="mllm_provider_select">
+                    <option value="huawei_custom">huawei_custom</option>
+                    <option value="vllm">vllm</option>
+                    <option value="dashscope">dashscope</option>
+                    <option value="openai">openai</option>
+                    <option value="anthropic">anthropic</option>
+                  </select>
+                </label>
+                <label id="mllm_model_select_wrap">
+                  <span>MLLM 模型</span>
+                  <select name="mllm_model_select" id="mllm_model_select">
+                    <option value="Qwen3-VL-235B-A22B-Instruct">Qwen3-VL-235B-A22B-Instruct</option>
+                  </select>
+                </label>
+                <label id="mllm_model_text_wrap" class="hidden">
+                  <span>MLLM 模型</span>
+                  <input type="text" name="mllm_model_text" id="mllm_model_text" placeholder="例如 qwen3.5:9b">
+                </label>
+              </div>
+
+              <div class="field field-inline field-inline-wide">
+                <label>
+                  <span>MLLM Base URL</span>
+                  <input type="text" name="mllm_base_url" id="mllm_base_url" placeholder="http://aitest-beta.rnd.huawei.com/v1">
+                </label>
+                <label>
+                  <span>Service Name</span>
+                  <input type="text" name="mllm_service_name" id="mllm_service_name" placeholder="仅 huawei_custom 需要">
+                </label>
+              </div>
+
+              <label class="field">
+                <span>MLLM API Key</span>
+                <input type="password" name="mllm_api_key" placeholder="留空则使用环境变量或免鉴权">
+              </label>
+            </div>
+
+            <div class="action-row">
+              <button type="submit" class="primary-btn">开始分析</button>
+              <button type="button" id="fill-demo" class="ghost-btn">填入示例</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel status-panel">
           <div class="panel-head">
-            <h2>运行摘要</h2>
-            <p>本次任务的时间、范围与最好/最弱维度。</p>
+            <h2>运行状态</h2>
+            <p>分析执行期间会显示当前状态、结果文件路径与实时日志。</p>
           </div>
-          <div id="summary-grid" class="summary-grid"></div>
-        </div>
-      </div>
-
-      <div class="panel dimension-panel">
-        <div class="panel-head">
-          <h2>维度诊断</h2>
-          <p>显示各维度分数、关键指标和异常事件。</p>
-        </div>
-        <div id="dimension-cards" class="dimension-cards"></div>
-      </div>
-    </section>
-
-    <section id="batch-results-panel" class="results-panel hidden">
-      <div class="panel batch-hero">
-        <div class="panel-head">
-          <h2>批量结果</h2>
-          <p id="batch-result-dir">-</p>
-        </div>
-        <div class="batch-hero-body">
-          <div class="score-ring batch-ring">
-            <div class="score-core">
-              <strong id="batch-avg-score">0.000</strong>
-              <span>平均综合分</span>
+          <div id="status-card" class="status-card idle">
+            <div class="status-indicator"></div>
+            <div>
+              <h3 id="status-title">等待提交</h3>
+              <p id="status-text">配置完成后点击“开始分析”。</p>
             </div>
           </div>
-          <div class="batch-meta-col">
-            <div class="score-meta" id="batch-score-meta"></div>
-            <div class="batch-distribution" id="batch-distribution"></div>
+          <div class="status-meta-grid">
+            <div class="info-list">
+              <div>
+                <span class="info-k">后端</span>
+                <span class="info-v">标准库 HTTP 服务</span>
+              </div>
+              <div>
+                <span class="info-k">结果</span>
+                <span class="info-v">综合分 + 维度卡片 + 事件摘要</span>
+              </div>
+              <div>
+                <span class="info-k">优化</span>
+                <span class="info-v">共享取帧、限帧、缩放、并发执行</span>
+              </div>
+            </div>
+            <div class="artifact-block">
+              <div class="artifact-head">
+                <h3>产物路径</h3>
+                <button type="button" id="clear-logs" class="mini-btn">清空日志视图</button>
+              </div>
+              <div class="artifact-list">
+                <div class="artifact-item">
+                  <span class="artifact-k">结果 JSON</span>
+                  <code id="result-path">-</code>
+                </div>
+                <div class="artifact-item">
+                  <span class="artifact-k">日志文件</span>
+                  <code id="log-path">-</code>
+                </div>
+                <div class="artifact-item">
+                  <span class="artifact-k">可视化目录</span>
+                  <code id="artifact-root-path">-</code>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="log-console-wrap">
+            <div class="artifact-head">
+              <h3>实时终端日志</h3>
+              <span id="log-meta" class="log-meta">等待任务启动</span>
+            </div>
+            <pre id="log-console" class="log-console"></pre>
+          </div>
+        </section>
+      </section>
+
+      <section id="results-panel" class="results-panel hidden">
+        <div class="results-overview">
+          <div class="panel score-panel">
+            <div class="panel-head">
+              <h2>综合结果</h2>
+              <p id="result-video">-</p>
+            </div>
+            <div class="score-wrap">
+              <div id="final-score-ring" class="score-ring">
+                <div class="score-core">
+                  <strong id="final-score-value">0.000</strong>
+                  <span>综合分</span>
+                </div>
+              </div>
+              <div class="score-meta" id="score-meta"></div>
+            </div>
+            <div id="artifact-ribbon" class="artifact-ribbon"></div>
+          </div>
+
+          <div class="panel summary-panel">
+            <div class="panel-head">
+              <h2>运行摘要</h2>
+              <p>本次任务的时间、范围与最好/最弱维度。</p>
+            </div>
+            <div id="summary-grid" class="summary-grid"></div>
           </div>
         </div>
-      </div>
 
-      <div class="panel">
-        <div class="panel-head">
-          <h2>批量摘要</h2>
+        <div class="panel dimension-panel">
+          <div class="panel-head">
+            <h2>维度诊断</h2>
+            <p>显示各维度分数、关键指标和异常事件。</p>
+          </div>
+          <div id="dimension-cards" class="dimension-cards"></div>
         </div>
-        <div id="batch-summary-grid" class="summary-grid"></div>
-      </div>
+      </section>
 
-      <div class="panel">
-        <div class="panel-head">
-          <h2>视频列表</h2>
-          <p>按综合分降序排列。</p>
+      <section id="batch-results-panel" class="results-panel hidden">
+        <div class="panel batch-hero">
+          <div class="panel-head">
+            <h2>批量结果</h2>
+            <p id="batch-result-dir">-</p>
+          </div>
+          <div class="batch-hero-body">
+            <div class="score-ring batch-ring">
+              <div class="score-core">
+                <strong id="batch-avg-score">0.000</strong>
+                <span>平均综合分</span>
+              </div>
+            </div>
+            <div class="batch-meta-col">
+              <div class="score-meta" id="batch-score-meta"></div>
+              <div class="batch-distribution" id="batch-distribution"></div>
+            </div>
+          </div>
         </div>
-        <div class="batch-table-wrap">
-          <table class="batch-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>视频</th>
-                <th class="right">综合分</th>
-                <th>状态</th>
-                <th>VLM</th>
-                <th class="right">耗时</th>
-                <th class="right">维度</th>
-              </tr>
-            </thead>
-            <tbody id="batch-table-body"></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
 
-  <template id="dimension-card-template">
-    <article class="dimension-card">
-      <div class="dimension-top">
-        <div>
-          <p class="dimension-label"></p>
-          <h3 class="dimension-score-text"></h3>
-          <p class="dimension-desc"></p>
+        <div class="panel">
+          <div class="panel-head">
+            <h2>批量摘要</h2>
+          </div>
+          <div id="batch-summary-grid" class="summary-grid"></div>
         </div>
-        <span class="dimension-band"></span>
-      </div>
-      <div class="progress-track"><div class="progress-fill"></div></div>
-      <div class="metrics-grid"></div>
-      <div class="highlights-block">
-        <h4>摘要</h4>
-        <ul class="highlights-list"></ul>
-      </div>
-      <div class="events-block hidden">
-        <h4>事件</h4>
-        <div class="event-list"></div>
-      </div>
-      <div class="vlm-raw-block hidden">
-        <div class="raw-head">
-          <h4>VLM 原始输出</h4>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>视频列表</h2>
+            <p>按综合分降序排列。</p>
+          </div>
+          <div class="batch-table-wrap">
+            <table class="batch-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>视频</th>
+                  <th class="right">综合分</th>
+                  <th>状态</th>
+                  <th>VLM</th>
+                  <th class="right">耗时</th>
+                  <th class="right">维度</th>
+                </tr>
+              </thead>
+              <tbody id="batch-table-body"></tbody>
+            </table>
+          </div>
         </div>
-        <pre class="raw-output-console"></pre>
-      </div>
-      <div class="dimension-artifacts-block hidden">
-        <h4>可视化产物</h4>
-        <div class="dimension-artifact-list"></div>
-      </div>
-    </article>
-  </template>
+      </section>
+    </main>
+
+    <template id="dimension-card-template">
+      <article class="dimension-card">
+        <div class="dimension-top">
+          <div>
+            <p class="dimension-label"></p>
+            <h3 class="dimension-score-text"></h3>
+            <p class="dimension-desc"></p>
+          </div>
+          <span class="dimension-band"></span>
+        </div>
+        <div class="progress-track"><div class="progress-fill"></div></div>
+        <div class="metrics-grid"></div>
+        <div class="highlights-block">
+          <h4>摘要</h4>
+          <ul class="highlights-list"></ul>
+        </div>
+        <div class="events-block hidden">
+          <h4>事件</h4>
+          <div class="event-list"></div>
+        </div>
+        <div class="vlm-raw-block hidden">
+          <div class="raw-head">
+            <h4>VLM 原始输出</h4>
+          </div>
+          <pre class="raw-output-console"></pre>
+        </div>
+        <div class="dimension-artifacts-block hidden">
+          <h4>可视化产物</h4>
+          <div class="dimension-artifact-list"></div>
+        </div>
+      </article>
+    </template>
+  </div>
 
   <script src="/static/app.js"></script>
 </body>
