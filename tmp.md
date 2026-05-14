@@ -1,4 +1,4 @@
-INFO:     127.0.0.1:42078 - "POST /api/evaluate HTTP/1.1" 500 Internal Server Error
+INFO:     10.108.192.54:65029 - "GET /api/jobs/38ae283ebf25/artifacts HTTP/1.1" 500 Internal Server Error
 ERROR:    Exception in ASGI application
 Traceback (most recent call last):
   File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/site-packages/uvicorn/protocols/http/h11_impl.py", line 415, in run_asgi
@@ -49,6 +49,6 @@ Traceback (most recent call last):
     return await future
   File "/home/ethan/anaconda3/envs/AIGC_Badcase/lib/python3.10/site-packages/anyio/_backends/_asyncio.py", line 1002, in run
     result = context.run(func, *args)
-  File "/data/AIGC_Video_Reasonableness_Evaluation/src/api/server.py", line 180, in evaluate
-    payload = request.model_dump(exclude_none=True)
-AttributeError: 'EvaluateRequest' object has no attribute 'model_dump'
+  File "/data/AIGC_Video_Reasonableness_Evaluation/src/api/server.py", line 280, in download_artifacts
+    zf.writestr("result.json", json.dumps(job.result, ensure_ascii=False, indent=2))
+NameError: name 'json' is not defined
