@@ -24,7 +24,7 @@ from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from .core import (
     DEFAULT_ANOMALY_TYPES,
@@ -260,6 +260,55 @@ async def evaluate_upload(
         "status": job.status,
         "video_name": dest.name,
     }
+
+
+@app.get("/api/jobs/{job_id}/artifacts")
+def download_artifacts(job_id: str):
+    """Download all generated files (reports, visualizations) as a zip archive."""
+    mgr = get_job_manager()
+    job = mgr.get_job(job_id)
+    if job.status not in ("completed", "failed"):
+        raise HTTPException(400, "任务未完成，无法下载产物")
+
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Result JSON
+        if job.result:
+            zf.writestr("result.json", json.dumps(job.result, ensure_ascii=False, indent=2))
+
+        # Log file
+        if job.log_path:
+            lp = Path(job.log_path)
+            if lp.exists():
+                zf.write(lp, f"logs/{lp.name}")
+
+        # Per-video reports (batch)
+        if isinstance(job.result, dict) and job.result.get("batch"):
+            for vr in job.result.get("video_results", []):
+                rp = vr.get("report_path")
+                if rp:
+                    p = Path(rp)
+                    if p.exists():
+                        zf.write(p, f"reports/{p.name}")
+
+        # Artifact directory
+        if job.artifact_root:
+            art_root = Path(job.artifact_root)
+            if art_root.is_dir():
+                for f in art_root.rglob("*"):
+                    if f.is_file():
+                        zf.write(f, f"visualizations/{f.relative_to(art_root)}")
+
+    buf.seek(0)
+    name = Path(job.run_config.video_path or "result").stem[:40]
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{name}_artifacts.zip"'},
+    )
 
 
 @app.post("/api/jobs/{job_id}/cleanup")

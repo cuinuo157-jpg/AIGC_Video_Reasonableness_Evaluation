@@ -109,6 +109,20 @@ class APIClient:
         """Delete all server-side temporary files for a completed job."""
         return self._request("POST", f"/api/jobs/{job_id}/cleanup")
 
+    def download_artifacts(self, job_id: str, save_path: str) -> str:
+        """Download all generated files as a zip archive. Returns local path."""
+        url = f"{self.base_url}/api/jobs/{job_id}/artifacts"
+        req = urllib.request.Request(url, method="GET")
+        req.add_header("Accept", "application/zip")
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                data = resp.read()
+                Path(save_path).write_bytes(data)
+                return save_path
+        except urllib.error.HTTPError as e:
+            print(f"  产物下载失败 [{e.code}]: 任务可能无产物或未完成")
+            return ""
+
 
 def wait_for_job(client: APIClient, job_id: str, poll_interval: float = 2.0) -> dict:
     """轮询等待任务完成，实时打印日志。"""
@@ -313,6 +327,15 @@ def main() -> None:
     if result_path:
         result_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"\n结果已保存到: {result_path}")
+
+    # Download visualization artifacts
+    try:
+        artifact_zip = Path(args.output or (Path(args.video).stem + "_artifacts")).with_suffix(".zip")
+        saved = client.download_artifacts(job_id, str(artifact_zip))
+        if saved:
+            print(f"可视化产物已保存到: {saved}")
+    except Exception:
+        pass
 
     # Clean up server-side temporary files
     try:
