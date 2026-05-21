@@ -1,6 +1,6 @@
 # 视频生成质量与一致性检测维度梳理
 
-> 最后更新: 2026-04-09
+> 最后更新: 2026-05-21
 
 ---
 
@@ -220,3 +220,14 @@
 
 - 详细设计：`docs/superpowers/specs/2026-03-10-six-dimension-evaluation-design.md`
 - 实施计划：`docs/superpowers/plans/2026-03-10-six-dimension-evaluation.md`
+- API 文档：`docs/api.md`（用户向）/ `docs/api-design.md`（设计向）
+- 阈值文档：`docs/thresholds.md`（全量）/ `docs/thresholds_top5.md`（Top5 场景）
+- 多模态选型：`docs/多模态模型选型与算力评估.md`
+
+## 分析范围
+
+| 范围 | Key | 维度数 | 包含维度 |
+|------|-----|:---:|------|
+| 五类异常 | `anomaly` | 5 | face_identity / expression / biological_anomaly / motion_logic / physics |
+| Top5 场景 | `top5` | 5 | face_identity / biological_anomaly / motion_logic / physics / temporal_coherence |
+| 全量维度 | `full` | 8 | 全部八个维度 |

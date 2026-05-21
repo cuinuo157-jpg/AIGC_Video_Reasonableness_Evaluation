@@ -1,5 +1,20 @@
 运行与批处理脚本：单视频评估、批量评估、可视化与结果汇总入口。
 
+## API 服务
+
+- `python scripts/run_api.py --host 0.0.0.0 --port 8000` — 启动 FastAPI 评测服务
+- `python scripts/run_api.py --reload` — 开发模式热重载
+
+启动后访问 `http://localhost:8000/docs` 查看 Swagger 交互文档。
+
+## API 测试客户端
+
+- `python scripts/test_api.py --health` — 健康检查
+- `python scripts/test_api.py --config` — 查看 API 配置（可用 scope、维度列表）
+- `python scripts/test_api.py --video <path> --scope top5` — 单视频 Top5 场景分析
+- `python scripts/test_api.py --video <path> --scope full --enable-mllm` — 全维度+MLLM
+- `python scripts/test_api.py --dir <dir>` — 批量目录分析
+
 ## Web 界面
 
 - `python scripts/run_webui.py --host 127.0.0.1 --port 8080`
@@ -8,10 +23,13 @@
 
 ## 单视频调试脚本
 
+- `python scripts/debug_face_identity.py --input <video> --device cuda`
+- `python scripts/debug_expression.py --input <video> --device cuda`
 - `python scripts/debug_bio_anomaly.py --input <video> --save-vis`
 - `python scripts/debug_dynamics.py --input <video> --subject --save-vis`
-- `python scripts/debug_iris_tracking.py --input <video> --save-vis --save-video`
+- `python scripts/debug_physics.py --input <video> --device cuda --enable-mllm`
 - `python scripts/debug_temporal_coherence.py --input <video> --save-det-vis`
+- `python scripts/debug_iris_tracking.py --input <video> --save-vis --save-video`
 
 ## 多卡批量脚本（Dynamics）
 

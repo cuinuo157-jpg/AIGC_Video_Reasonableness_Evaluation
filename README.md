@@ -1,7 +1,7 @@
 # AIGC Video Reasonableness Evaluation
 
 AIGC 生成式视频合理性多维度评测框架。  
-围绕 **身份一致性、表情自然度、生物特征异常、运动逻辑、物理常识、背景一致性、时间一致性、感知质量** 等维度进行综合打分与异常定位，支持 FeatureHub 共享特征缓存、可选 MLLM/VLM 判定、统一流水线输出。
+围绕 **身份一致性、表情自然度、生物特征异常、运动逻辑、物理常识、背景一致性、时间一致性、感知质量** 等八个维度进行综合打分与异常定位，支持三种分析范围（五类异常 / Top5 场景 / 全量维度）、FeatureHub 共享特征缓存、可选 MLLM/VLM 判定、统一流水线输出与 FastAPI 服务接口。
 
 ---
 
@@ -13,6 +13,9 @@ AIGC 生成式视频合理性多维度评测框架。
 - 移除历史/不准确描述（如 `scene_realism`、`fusion_engine`、`video_io` 等根目录模块说明）
 - 对齐现有脚本入口（`debug_physics.py`、`eval_video_reasonableness_dashscope.py`、`run_4gpu_batch.sh` 等）
 - 对齐近期能力更新：D4 动态度脚本参数与输出增强、D5 VLM 判定链路、MLLM 调用日志与抽帧信息输出
+- 新增 Top5 场景分析范围（身份/生物异常/运动逻辑/物理常识/时间一致性）
+- 新增 API 服务（`run_api.py`）与测试客户端（`test_api.py`）
+- 新增维度阈值文档（`docs/thresholds.md`、`docs/thresholds_top5.md`）
 
 ---
 

@@ -64,6 +64,12 @@ GET /api/config
       ]
     },
     {
+      "key": "top5",
+      "label": "Top5 场景",
+      "description": "身份、生物异常、运动逻辑、物理常识、时间一致性。",
+      "dimensions": [...]
+    },
+    {
       "key": "full",
       "label": "全量维度",
       "description": "包含时间一致性、背景一致性与感知质量。",
@@ -95,7 +101,7 @@ Content-Type: application/json
 |---|---|---|---|---|
 | `video_path` | string | 与 video_dir 二选一 | — | 本地视频文件路径（服务端路径） |
 | `video_dir` | string | 与 video_path 二选一 | — | 视频目录路径（批量模式） |
-| `scope` | string | 否 | `"anomaly"` | 分析范围：`anomaly`（五类异常）或 `full`（全量维度） |
+| `scope` | string | 否 | `"anomaly"` | 分析范围：`anomaly`（五类异常）、`top5`（Top5场景）或 `full`（全量维度） |
 | `device` | string | 否 | `"cuda"` | 推理设备 |
 | `parallel` | bool | 否 | `true` | 是否启用并发检测 |
 | `max_workers` | int | 否 | — | 最大并发数（不填则自动） |
