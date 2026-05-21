@@ -208,7 +208,7 @@ def main() -> None:
     parser.add_argument("--config", action="store_true", help="查看 API 配置")
     parser.add_argument("--video", help="单视频路径")
     parser.add_argument("--dir", help="视频目录（批量模式）")
-    parser.add_argument("--scope", default="anomaly", choices=["anomaly", "full"], help="分析范围")
+    parser.add_argument("--scope", default="anomaly", choices=["anomaly", "top5", "full"], help="分析范围")
     parser.add_argument("--device", default="cuda", help="推理设备")
     parser.add_argument("--enable-mllm", action="store_true", help="启用 MLLM/VLM")
     parser.add_argument("--mllm-provider", default="huawei_custom", help="MLLM 提供方")
