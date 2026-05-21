@@ -36,6 +36,7 @@ from .core import (
     DEFAULT_MAX_SIDE,
     DEFAULT_RESULTS_DIR,
     DEFAULT_SAMPLE_STRIDE,
+    DEFAULT_TOP5_TYPES,
     DEFAULT_UPLOAD_DIR,
     DIMENSION_CATALOG,
     FULL_DIMENSIONS,
@@ -136,6 +137,20 @@ def get_config() -> dict[str, Any]:
                         scope="anomaly",
                     )
                     for key in DEFAULT_ANOMALY_TYPES
+                ],
+            },
+            {
+                "key": "top5",
+                "label": "Top5 场景",
+                "description": "身份、生物异常、运动逻辑、物理常识、时间一致性。",
+                "dimensions": [
+                    DimensionInfo(
+                        key=key,
+                        label=DIMENSION_CATALOG[key]["label"],
+                        description=DIMENSION_CATALOG[key]["description"],
+                        scope="top5",
+                    )
+                    for key in DEFAULT_TOP5_TYPES
                 ],
             },
             {

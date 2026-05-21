@@ -38,6 +38,14 @@ DEFAULT_ANOMALY_TYPES = (
     "physics",
 )
 
+DEFAULT_TOP5_TYPES = (
+    "face_identity",
+    "biological_anomaly",
+    "motion_logic",
+    "physics",
+    "temporal_coherence",
+)
+
 _ANOMALY_TYPE_ALIASES = {
     "identity": "face_identity",
     "face": "face_identity",

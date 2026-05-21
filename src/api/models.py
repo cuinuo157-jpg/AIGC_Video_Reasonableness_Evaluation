@@ -24,8 +24,8 @@ class EvaluateRequest(BaseModel):
     )
     scope: str = Field(
         default="anomaly",
-        description="分析范围: 'anomaly'（五类异常）或 'full'（全量维度）",
-        pattern=r"^(anomaly|full)$",
+        description="分析范围: 'anomaly'（五类异常）、'top5'（Top5场景）或 'full'（全量维度）",
+        pattern=r"^(anomaly|top5|full)$",
     )
     anomaly_types: list[str] | None = Field(
         default=None,

@@ -23,6 +23,7 @@ import numpy as np
 
 from src.evaluation_pipeline import (
     DEFAULT_ANOMALY_TYPES,
+    DEFAULT_TOP5_TYPES,
     DEFAULT_WEIGHTS,
     DimensionResult,
     EvaluationPipeline,
@@ -45,7 +46,7 @@ DIMENSION_CATALOG: dict[str, dict[str, str]] = {
     "face_identity": {
         "label": "身份一致性",
         "description": "检查主角外观与身份是否在时序上稳定。",
-        "scope": "anomaly",
+        "scope": "anomaly,top5",
     },
     "expression": {
         "label": "表情自然度",
@@ -55,22 +56,22 @@ DIMENSION_CATALOG: dict[str, dict[str, str]] = {
     "biological_anomaly": {
         "label": "生物特征异常",
         "description": "检测眼、嘴、手、骨骼等人体结构异常。",
-        "scope": "anomaly",
+        "scope": "anomaly,top5",
     },
     "motion_logic": {
         "label": "运动逻辑",
         "description": "评估动态幅度、平滑度和运动自然性。",
-        "scope": "anomaly",
+        "scope": "anomaly,top5",
     },
     "physics": {
         "label": "物理常识",
         "description": "检查漂移、悬浮和违反物理规律的现象。",
-        "scope": "anomaly",
+        "scope": "anomaly,top5",
     },
     "temporal_coherence": {
         "label": "时间一致性",
         "description": "检测物体异常出现、消失与跳变。",
-        "scope": "full",
+        "scope": "full,top5",
     },
     "background": {
         "label": "背景一致性",
@@ -165,7 +166,12 @@ def _coerce_list(value: Any) -> list[str]:
 
 
 def _normalize_dimensions(raw: list[str], scope: str) -> tuple[str, ...]:
-    allowed = DEFAULT_ANOMALY_TYPES if scope == "anomaly" else FULL_DIMENSIONS
+    if scope == "top5":
+        allowed = DEFAULT_TOP5_TYPES
+    elif scope == "full":
+        allowed = FULL_DIMENSIONS
+    else:
+        allowed = DEFAULT_ANOMALY_TYPES
     selected = [item for item in raw if item in allowed]
     if not selected:
         selected = list(allowed)
@@ -764,8 +770,14 @@ def parse_analysis_config(
     if video_dir and not Path(video_dir).is_dir():
         raise ValueError(f"视频目录不存在: {video_dir}")
 
-    scope = "full" if str(payload.get("scope", "")).strip().lower() == "full" else "anomaly"
-    selection_key = "selected_dimensions" if scope == "full" else "anomaly_types"
+    scope_raw = str(payload.get("scope", "")).strip().lower()
+    if scope_raw == "top5":
+        scope = "top5"
+    elif scope_raw == "full":
+        scope = "full"
+    else:
+        scope = "anomaly"
+    selection_key = "selected_dimensions" if scope in ("full", "top5") else "anomaly_types"
     selected_dimensions = _normalize_dimensions(_coerce_list(payload.get(selection_key)), scope)
     device = str(payload.get("device", DEFAULT_DEVICE)).strip() or DEFAULT_DEVICE
     au_backend = str(payload.get("au_backend", DEFAULT_AU_BACKEND)).strip().lower() or DEFAULT_AU_BACKEND
@@ -1241,5 +1253,10 @@ def build_batch_report(
 
 def available_dimensions(scope: str) -> list[dict[str, str]]:
     """Get available dimension choices for a given scope."""
-    keys = DEFAULT_ANOMALY_TYPES if scope == "anomaly" else FULL_DIMENSIONS
+    if scope == "top5":
+        keys = DEFAULT_TOP5_TYPES
+    elif scope == "full":
+        keys = FULL_DIMENSIONS
+    else:
+        keys = DEFAULT_ANOMALY_TYPES
     return [{"key": key, **DIMENSION_CATALOG[key]} for key in keys]

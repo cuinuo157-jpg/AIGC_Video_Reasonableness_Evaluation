@@ -22,6 +22,7 @@ from src.api.core import (
     DEFAULT_MAX_FRAMES,
     DEFAULT_MAX_SIDE,
     DEFAULT_SAMPLE_STRIDE,
+    DEFAULT_TOP5_TYPES,
     DEFAULT_UPLOAD_DIR,
     DEFAULT_VISUALIZATION_DIR,
     DIMENSION_CATALOG,
@@ -90,6 +91,12 @@ def build_frontend_config() -> dict[str, Any]:
                 "dimensions": available_dimensions("anomaly"),
             },
             {
+                "key": "top5",
+                "label": "Top5 场景",
+                "description": "身份、生物异常、运动逻辑、物理常识、时间一致性。",
+                "dimensions": available_dimensions("top5"),
+            },
+            {
                 "key": "full",
                 "label": "全量维度",
                 "description": "包含时间一致性、背景一致性与感知质量。",
@@ -113,6 +120,7 @@ def build_frontend_config() -> dict[str, Any]:
             "mllm_api_key": "",
             "mllm_service_name": "simple_client",
             "anomaly_types": list(DEFAULT_ANOMALY_TYPES),
+            "top5_types": list(DEFAULT_TOP5_TYPES),
             "selected_dimensions": list(FULL_DIMENSIONS),
         },
         "mllm_providers": list(SUPPORTED_MLLM_PROVIDERS),
