@@ -43,6 +43,7 @@ from .core import (
     JobManager,
     SUPPORTED_MLLM_PROVIDERS,
     _default_mllm_config,
+    _safe_stem,
     available_dimensions,
     parse_analysis_config,
 )
@@ -247,7 +248,7 @@ async def evaluate_upload(
     upload_dir = DEFAULT_UPLOAD_DIR
     upload_dir.mkdir(parents=True, exist_ok=True)
     safe_name = Path(file.filename or "upload.mp4").name.replace(" ", "_")
-    stem = Path(safe_name).stem[:80] or "video"
+    stem = _safe_stem(safe_name, max_len=80)
     suffix = Path(safe_name).suffix or ".mp4"
     dest = upload_dir / f"{int(time.time())}_{stem}{suffix}"
     dest.write_bytes(await file.read())
@@ -321,7 +322,7 @@ def download_artifacts(job_id: str):
                         zf.write(f, f"visualizations/{f.relative_to(art_root)}")
 
     buf.seek(0)
-    name = Path(job.run_config.video_path or "result").stem[:40]
+    name = _safe_stem(job.run_config.video_path or "result", max_len=40)
     return StreamingResponse(
         buf,
         media_type="application/zip",

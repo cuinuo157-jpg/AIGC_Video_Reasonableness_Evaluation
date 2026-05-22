@@ -29,6 +29,7 @@ from src.api.core import (
     FULL_DIMENSIONS,
     SUPPORTED_MLLM_PROVIDERS,
     _default_mllm_config,
+    _safe_stem,
     available_dimensions,
     parse_analysis_config,
     run_analysis,
@@ -151,7 +152,7 @@ def build_upload_path(
     target_dir.mkdir(parents=True, exist_ok=True)
     safe_name = Path(filename).name or "upload.mp4"
     safe_name = safe_name.replace(" ", "_")
-    stem = Path(safe_name).stem[:80] or "video"
+    stem = _safe_stem(safe_name, max_len=80)
     suffix = Path(safe_name).suffix or ".mp4"
     return target_dir / f"{int(time.time())}_{stem}{suffix}"
 

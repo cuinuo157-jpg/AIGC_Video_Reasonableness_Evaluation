@@ -10,9 +10,11 @@ import gc
 import json
 import logging
 import os
+import re
 import sys
 import threading
 import time
+import unicodedata
 import uuid
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field, is_dataclass
@@ -36,6 +38,28 @@ from src.feature_hub import VideoProcessingConfig
 from src.mllm import MLLMClient, MLLMConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_stem(video_path: str | Path, max_len: int = 80, fallback: str = "video") -> str:
+    """将视频文件名转为 ASCII 安全标识符，用于路径/文件名构造。
+
+    处理逻辑：
+    1. 提取 stem（不带扩展名的文件名）
+    2. NFKD 归一化拆解 Unicode → 保留 ASCII 字母数字、连字符、下划线
+    3. 连续非 ASCII 部分合并为单个 '_'，去除首尾下划线
+    4. 截断到 max_len，结果为空则用 fallback
+    """
+    stem = Path(video_path).stem
+    # NFKD 归一化：将全角字符、带音调字母等拆解为 ASCII 等价形式
+    normalized = unicodedata.normalize("NFKD", stem)
+    # 只保留 ASCII 字母数字、连字符、下划线；其他替换为空格
+    ascii_only = "".join(c if c.isascii() and (c.isalnum() or c in "-_") else " " for c in normalized)
+    # 合并连续空格为单个下划线
+    collapsed = re.sub(r"\s+", "_", ascii_only).strip("_")
+    if not collapsed:
+        collapsed = fallback
+    return collapsed[:max_len]
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  Constants
@@ -381,14 +405,14 @@ class JobManager:
             job.updated_at = time.time()
 
     def _build_output_paths(self, job: Job) -> tuple[Path, Path]:
-        stem = Path(job.run_config.video_path).stem[:80] or "video"
+        stem = _safe_stem(job.run_config.video_path)
         timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime(job.created_at))
         result_path = self.results_dir / f"{timestamp}_{stem}_{job.job_id}_report.json"
         log_path = self.results_dir / f"{timestamp}_{stem}_{job.job_id}.log"
         return result_path, log_path
 
     def _build_artifact_dir(self, job: Job) -> Path:
-        stem = Path(job.run_config.video_path).stem[:80] or "video"
+        stem = _safe_stem(job.run_config.video_path)
         timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime(job.created_at))
         base_dir = Path(job.run_config.visualization_root or DEFAULT_VISUALIZATION_DIR).resolve()
         return base_dir / f"{timestamp}_{stem}_{job.job_id}"
@@ -523,7 +547,7 @@ class JobManager:
                     artifacts = []
                     artifact_root = None
                     if single_config.save_visualizations and hub is not None:
-                        stem = video_name.rsplit(".", 1)[0][:80] or "video"
+                        stem = _safe_stem(video_path)
                         ts = time.strftime("%Y%m%d_%H%M%S", time.localtime(job.created_at))
                         base_dir = Path(single_config.visualization_root or DEFAULT_VISUALIZATION_DIR).resolve()
                         artifact_dir = base_dir / f"{ts}_{stem}_{job.job_id}"
@@ -535,7 +559,7 @@ class JobManager:
                             pass
 
                     # Save per-video report
-                    stem = Path(video_path).stem[:80] or "video"
+                    stem = _safe_stem(video_path)
                     ts = time.strftime("%Y%m%d_%H%M%S", time.localtime(job.created_at))
                     report_path = self.results_dir / f"{ts}_{stem}_{job.job_id}_per_video.json"
                     report_path.write_text(

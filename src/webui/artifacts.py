@@ -14,6 +14,7 @@ from src.expression_naturalness.au_rules import (
 )
 from src.mllm.prompts import MOTION_NATURALNESS_PROMPT
 from src.mllm.prompts.physics_commonsense import build_physics_prompt
+from src.api.core import _safe_stem
 
 if TYPE_CHECKING:
     from .service import WebUIRunConfig
@@ -32,7 +33,7 @@ def generate_visual_artifacts(
     output_dir.mkdir(parents=True, exist_ok=True)
     all_artifacts: list[dict[str, Any]] = []
     by_dimension: ArtifactMap = {}
-    video_name = Path(run_config.video_path).stem
+    video_name = _safe_stem(run_config.video_path)
 
     def append_log(message: str) -> None:
         if log_fn is not None:
