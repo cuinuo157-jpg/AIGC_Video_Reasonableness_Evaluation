@@ -23,7 +23,6 @@ import numpy as np
 
 from src.evaluation_pipeline import (
     DEFAULT_ANOMALY_TYPES,
-    DEFAULT_TOP5_TYPES,
     DEFAULT_WEIGHTS,
     DimensionResult,
     EvaluationPipeline,
@@ -86,6 +85,16 @@ DIMENSION_CATALOG: dict[str, dict[str, str]] = {
 }
 
 FULL_DIMENSIONS = tuple(DEFAULT_WEIGHTS.keys())
+
+# Top5 场景维度组合（与 src/evaluation_pipeline.DEFAULT_TOP5_TYPES 保持同步）
+DEFAULT_TOP5_TYPES: tuple[str, ...] = (
+    "face_identity",
+    "biological_anomaly",
+    "motion_logic",
+    "physics",
+    "temporal_coherence",
+)
+
 DEFAULT_DEVICE = "cuda"
 DEFAULT_SAMPLE_STRIDE = 2
 DEFAULT_MAX_FRAMES = 48
