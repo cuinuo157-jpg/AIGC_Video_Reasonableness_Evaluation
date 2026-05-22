@@ -283,7 +283,9 @@ def download_artifacts(job_id: str):
     """Download all generated files (reports, visualizations) as a zip archive."""
     mgr = get_job_manager()
     job = mgr.get_job(job_id)
-    if job.status not in ("completed", "failed"):
+    # 使用 get_job_snapshot 读取状态（内部加锁），避免跨线程读到 stale status
+    snapshot = mgr.get_job_snapshot(job_id)
+    if snapshot["status"] not in ("completed", "failed"):
         raise HTTPException(400, "任务未完成，无法下载产物")
 
     import io
@@ -331,6 +333,10 @@ def download_artifacts(job_id: str):
 def cleanup_job(job_id: str) -> dict[str, Any]:
     """Delete all temporary files for a completed job."""
     mgr = get_job_manager()
+    # 使用 get_job_snapshot 读取状态（内部加锁），避免跨线程读到 stale status
+    snapshot = mgr.get_job_snapshot(job_id)
+    if snapshot["status"] not in ("completed", "failed"):
+        raise HTTPException(400, "任务未完成，无法清理")
     job = mgr.get_job(job_id)
     deleted: list[str] = []
 
